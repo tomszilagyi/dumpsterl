@@ -8,6 +8,7 @@
 -export([ add/2
         , new/0
         , new/1
+        , setopts/1
         ]).
 
 % DEBUG:
@@ -38,6 +39,31 @@ fold_tab_field(Tab, FieldNo, Key, Spec0, Limit) ->
     fold_tab_field(Tab, FieldNo, ets:next(Tab, Key), Spec, Limit-1).
 -endif.
 
+
+%% Supported options:
+%%
+%%   mag: integer()
+%%     control subgrouping of numerals by magnitude
+%%        0: turn off subgrouping;
+%%        N: subgroup N orders of magnitude in one; defults to 3
+%%
+%%   strlen: true | false
+%%     control subgrouping of strings by length
+%%
+default_opts() ->
+    [ {mag, 3}
+    , {strlen, false}
+    ].
+
+%% NB. using the process dict is ugly; passing Opts around is uglier.
+setopts(Opts) -> put(dataspec_opts, Opts).
+
+getopts() ->
+    case get(dataspec_opts) of
+        undefined -> default_opts();
+        Opts      -> Opts
+    end.
+
 %% Initialize a new data spec
 %% A data spec is a union of sub-specs, represented as a list of terms.
 %% Terms are tuples describing various types of data.
@@ -48,6 +74,7 @@ new() -> [].
 
 %% Initialize, immediately adding one data term
 new(Data) -> add(Data, new()).
+
 
 %% Add an instance of Data to Spec.
 %% If Spec already contains Data, do nothing.
@@ -64,23 +91,38 @@ add(L, Spec) when is_list(L) -> add_list(classify_list(L), L, Spec);
 add(T, Spec) when is_tuple(T) -> add_tuple(T, Spec);
 add(Data, Spec) -> add_value(Data, Spec).
 
-%% add a numeric under key 'integer' or 'float'; subspec with order of magnitude
+%% add a numeric under key 'integer' or 'float'
 add_numeric(Key, Value, Spec) ->
-    merge_spec(Spec, [Key, {mag, mag(Value)}], fun f_merge_num/2, Value).
+    %% interpret the {mag, N} option as:
+    %% - if N = 0 or the option is missing: no subgrouping based on magnitude
+    %% - if N > 0: group N orders of magnitude into one subspec
+    %% - if mag is present as a boolean option, N defaults to 3.
+    Path = case proplists:get_value(mag, getopts()) of
+               undefined -> [Key];
+               0         -> [Key];
+               true      -> [Key, {mag, mag(Value, 3)}];
+               N         -> [Key, {mag, mag(Value, N)}]
+           end,
+    merge_spec(Spec, Path, fun f_merge_num/2, Value).
 
 %% add an atom
 add_atom(Atom, Spec) ->
     merge_spec(Spec, [atom, Atom], fun f_merge_count/2, dummy).
 
 %% add a value not in any broader set
-add_value(Value, Spec) -> merge_spec(Spec, [{value, Value}], fun f_merge_count/2, Value).
+add_value(Value, Spec) ->
+    merge_spec(Spec, [{value, Value}], fun f_merge_count/2, Value).
 
 add_list(list, L, Spec) -> % generic list is type-tagged with the length of the list
     %% build a spec recursively for all members of the list
     merge_spec(Spec, [{list, length(L)}], fun f_merge_recur/2, L);
 add_list(Type, L, Spec) -> % specially classified list, eg. str_alpha
-    %% subspecs broken down based on length
-    merge_spec(Spec, [Type, {len, length(L)}], fun f_merge_sample/2, L).
+    %% the strlen option enables subgrouping strings by length
+    Path = case proplists:get_value(strlen, getopts(), false) of
+               false -> [Type];
+               true  -> [Type, {len, length(L)}]
+           end,
+    merge_spec(Spec, Path, fun f_merge_sample/2, L).
 
 add_tuple(T, Spec) ->
     merge_spec(Spec, [{tuple, tuple_size(T)}], fun f_merge_recur/2, tuple_to_list(T)).
@@ -163,7 +205,7 @@ char_in_ranges(C, [{Min, Max} | _]) when C >= Min, C =< Max -> true;
 char_in_ranges(C, [{_Min, _Max} | Rest]) -> char_in_ranges(C, Rest).
 
 %% order of magnitude for integers and floats
-mag(X) -> trunc(math:log10(abs(X))).
+mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 
 
 %% Tests
