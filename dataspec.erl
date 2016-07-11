@@ -129,25 +129,25 @@ add_tuple(T, Spec) ->
 
 %% spec merge function for counting values
 %% spec data: Count
-f_merge_count(false, _Data)         -> 1;
-f_merge_count({_Key, Count}, _Data) -> Count+1.
+f_merge_count(error, _Data)       -> 1;
+f_merge_count({ok, Count}, _Data) -> Count+1.
 
 %% spec merge function for numerals
 %% spec data: {Min, Max, Count}
-f_merge_num(false, Data)                                     -> {Data, Data, 1};
-f_merge_num({_Key, {Min, Max, Count}}, Data) when Data < Min -> {Data, Max, Count+1};
-f_merge_num({_Key, {Min, Max, Count}}, Data) when Data > Max -> {Min, Data, Count+1};
-f_merge_num({_Key, {Min, Max, Count}}, _Data)                -> {Min, Max, Count+1}.
+f_merge_num(error, Data)                                   -> {Data, Data, 1};
+f_merge_num({ok, {Min, Max, Count}}, Data) when Data < Min -> {Data, Max, Count+1};
+f_merge_num({ok, {Min, Max, Count}}, Data) when Data > Max -> {Min, Data, Count+1};
+f_merge_num({ok, {Min, Max, Count}}, _Data)                -> {Min, Max, Count+1}.
 
 %% spec merge function for sampling: keep count and store an example
 %% spec data: {Count, Sample}
-f_merge_sample(false, Data)                    -> {1, Data};
-f_merge_sample({_Key, {Count, Sample}}, _Data) -> {Count+1, Sample}.
+f_merge_sample(error, Data)                  -> {1, Data};
+f_merge_sample({ok, {Count, Sample}}, _Data) -> {Count+1, Sample}.
 
 %% spec merge function for recursively spec'ing compound structures
 %% spec data: list of subspecs, one per item
-f_merge_recur(false, L)         -> lists:map(fun new/1, L);
-f_merge_recur({_Key, SpecL}, L) -> lists:zipwith(fun add/2, L, SpecL).
+f_merge_recur(error, L)       -> lists:map(fun new/1, L);
+f_merge_recur({ok, SpecL}, L) -> lists:zipwith(fun add/2, L, SpecL).
 
 %% general hierarchical storage for specs
 %%   Spec: spec to modify: [{Key, Value|Subspec}]
@@ -158,14 +158,14 @@ f_merge_recur({_Key, SpecL}, L) -> lists:zipwith(fun add/2, L, SpecL).
 %%   Data: term to merge into spec
 merge_spec(Spec, [Key], Fun, Data) ->
     %io:format("merge_spec: Spec: ~p  Key: ~p~n", [Spec, Key]),
-    lists:keystore(Key, 1, Spec, {Key, Fun(lists:keyfind(Key, 1, Spec), Data)});
+    orddict:store(Key, Fun(orddict:find(Key, Spec), Data), Spec);
 merge_spec(Spec, [Key|Rest], Fun, Data) ->
     %io:format("merge_spec: Spec: ~p  Key: ~p  Rest: ~p~n", [Spec, Key, Rest]),
-    Subspec = case lists:keyfind(Key, 1, Spec) of
-                  false           -> merge_spec([], Rest, Fun, Data);
-                  {Key, Subspec0} -> merge_spec(Subspec0, Rest, Fun, Data)
+    Subspec = case orddict:find(Key, Spec) of
+                  error          -> merge_spec([], Rest, Fun, Data);
+                  {ok, Subspec0} -> merge_spec(Subspec0, Rest, Fun, Data)
               end,
-    lists:keystore(Key, 1, Spec, {Key, Subspec}).
+    orddict:store(Key, Subspec, Spec).
 
 %% List classification
 %% we try to fit the list into a category as narrow as possible;
@@ -243,13 +243,16 @@ add_float_test() ->
 add_atom_test() ->
     L = [this, that, this],
     Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{atom, [{this, 2},
-                          {that, 1}]}], Spec).
+    ?assertEqual([{atom, [ {that, 1}
+                         , {this, 2}
+                         ]}], Spec).
 
 add_value_test() ->
     L = [[], 0, []],
     Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{{value, []}, 2}, {{value, 0}, 1}], Spec).
+    ?assertEqual([ {{value, 0}, 1}
+                 , {{value, []}, 2}
+                 ], Spec).
 
 add_list_test() ->
     Spec0 = new([1, 2]),
