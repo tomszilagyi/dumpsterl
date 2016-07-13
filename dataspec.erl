@@ -40,15 +40,15 @@ fold_tab_field(Tab, FieldNo, Key, Spec0, Limit) ->
 -endif.
 
 
-%% Supported options:
+%% dataspec output can be controlled to some extent. Supported options:
 %%
 %%   mag: integer()
-%%     control subgrouping of numerals by magnitude
+%%     subgrouping of numerals by magnitude
 %%        0: turn off subgrouping;
 %%        N: subgroup N orders of magnitude in one; defults to 3
 %%
 %%   strlen: true | false
-%%     control subgrouping of strings by length
+%%     subgrouping of strings by length
 %%
 default_opts() ->
     [ {mag, 3}
@@ -133,16 +133,16 @@ f_merge_count(error, _Data)       -> 1;
 f_merge_count({ok, Count}, _Data) -> Count+1.
 
 %% spec merge function for numerals
-%% spec data: {Min, Max, Count}
-f_merge_num(error, Data)                                   -> {Data, Data, 1};
-f_merge_num({ok, {Min, Max, Count}}, Data) when Data < Min -> {Data, Max, Count+1};
-f_merge_num({ok, {Min, Max, Count}}, Data) when Data > Max -> {Min, Data, Count+1};
-f_merge_num({ok, {Min, Max, Count}}, _Data)                -> {Min, Max, Count+1}.
+%% spec data: {Count, Min, Max}
+f_merge_num(error, Data)                                   -> {1, Data, Data};
+f_merge_num({ok, {Count, Min, Max}}, Data) when Data < Min -> {Count+1, Data, Max};
+f_merge_num({ok, {Count, Min, Max}}, Data) when Data > Max -> {Count+1, Min, Data};
+f_merge_num({ok, {Count, Min, Max}}, _Data)                -> {Count+1, Min, Max}.
 
-%% spec merge function for sampling: keep count and store an example
-%% spec data: {Count, Sample}
-f_merge_sample(error, Data)                  -> {1, Data};
-f_merge_sample({ok, {Count, Sample}}, _Data) -> {Count+1, Sample}.
+%% spec merge function for sampling: keep count and store a sample of data.
+%% spec data: {Count, SampleData}
+f_merge_sample(error, Data)             -> {1, sample_data(Data)};
+f_merge_sample({ok, {Count, SD}}, Data) -> {Count+1, sample_data(Data, SD)}.
 
 %% spec merge function for recursively spec'ing compound structures
 %% spec data: list of subspecs, one per item
@@ -207,6 +207,38 @@ char_in_ranges(C, [{_Min, _Max} | Rest]) -> char_in_ranges(C, Rest).
 %% order of magnitude for integers and floats
 mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 
+%% sample_data:
+%%
+%% Aim: as a (potentially unlimited, unknown length) stream of samples
+%% comes in, retain a limited selection of samples taken uniformly
+%% across the already received (finite) part of the stream. We want to
+%% do this in a computationally cheap manner.
+
+%% Algorithm: we have a certain capacity of samples in sample_data,
+%% ?N_SAMPLES. When it is filled, we throw every other away.
+%% From then, we put only every other incoming sample in the list.
+%% When sample_data is filled again, we again throw every other away.
+%% From then, only every fourth incoming sample is put in the list,
+%% etc.
+
+-define(N_SAMPLES, 16).
+
+sample_data(Data) ->
+    {0, 1, 1, [Data]}. % divisor, n_received, size, sample_data
+
+sample_data(_Data, {Div, N, Size, Samples}) when (N+1) band Div =/= 0 ->
+    {Div, N+1, Size, Samples};
+sample_data(_Data, {Div, N, Size, Samples}) when Size =:= ?N_SAMPLES ->
+    {Div bsl 1 + 1, N+1, Size bsr 1, drop2(Samples)};
+sample_data(Data, {Div, N, Size, Samples}) ->
+    {Div, N+1, Size+1, [Data|Samples]}.
+
+drop2(L) -> drop2(L, false, []).
+
+drop2([], _DropThis, Acc) -> lists:reverse(Acc);
+drop2([E|R], false, Acc)  -> drop2(R, true, [E|Acc]);
+drop2([_E|R], true, Acc)  -> drop2(R, false, Acc).
+
 
 %% Tests
 
@@ -231,13 +263,13 @@ merge_spec_hier_test() ->
 add_integer_test() ->
     L = [1, 4, 9, 0, -5],
     Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{integer, [{{mag, 0}, {lists:min(L), lists:max(L), length(L)-1}}]},
+    ?assertEqual([{integer, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
                   {{value, 0}, 1}], Spec).
 
 add_float_test() ->
     L = [1.3, 4.12, 9.99, 0.0, -5.31],
     Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{float, [{{mag, 0}, {lists:min(L), lists:max(L), length(L)-1}}]},
+    ?assertEqual([{float, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
                   {{value, 0.0}, 1}], Spec).
 
 add_atom_test() ->
@@ -258,11 +290,11 @@ add_list_test() ->
     Spec0 = new([1, 2]),
     ?assertEqual([{{list, 2},
                    [[{integer, [{{mag, 0}, {1, 1, 1}}]}],
-                    [{integer, [{{mag, 0}, {2, 2, 1}}]}]]}], Spec0),
+                    [{integer, [{{mag, 0}, {1, 2, 2}}]}]]}], Spec0),
     Spec1 = add([1, 3], Spec0),
     ?assertEqual([{{list, 2},
-                   [[{integer, [{{mag, 0}, {1, 1, 2}}]}],
-                    [{integer, [{{mag, 0}, {2, 3, 2}}]}]]}], Spec1).
+                   [[{integer, [{{mag, 0}, {2, 1, 1}}]}],
+                    [{integer, [{{mag, 0}, {2, 2, 3}}]}]]}], Spec1).
 
 %% rec_test() ->
 %%     R = alma,
@@ -280,6 +312,25 @@ classify_list_test() ->
     ?assertEqual(str_alnum, classify_list("abcDEF123")),
     ?assertEqual(str_printable, classify_list("This is a (printable) string!")).
 
+drop2_test() ->
+    ?assertEqual([],        drop2([])),
+    ?assertEqual([1],       drop2([1])),
+    ?assertEqual([1],       drop2([1, 2])),
+    ?assertEqual([1, 3],    drop2([1, 2, 3])),
+    ?assertEqual([1, 3],    drop2([1, 2, 3, 4])),
+    ?assertEqual([1, 3, 5], drop2([1, 2, 3, 4, 5])),
+    ?assertEqual([1, 3, 5], drop2([1, 2, 3, 4, 5, 6])).
+
+sample_data_test() ->
+    SD0 = sample_data(1),
+    SD1 = lists:foldl(fun sample_data/2, SD0, lists:seq(2, 16)),
+    ?assertEqual({0,16,16,[16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]}, SD1),
+    SD2 = lists:foldl(fun sample_data/2, SD1, lists:seq(17, 32)),
+    ?assertEqual({1,32,16,[32,30,28,26,24,22,20,18,16,14,12,10,8,6,4,2]}, SD2),
+    SD3 = lists:foldl(fun sample_data/2, SD2, lists:seq(33, 64)),
+    ?assertEqual({3,64,16,[64,60,56,52,48,44,40,36,32,28,24,20,16,12,8,4]}, SD3),
+    SD4 = lists:foldl(fun sample_data/2, SD3, lists:seq(65, 128)),
+    ?assertEqual({7,128,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD4).
 
 alma_test() ->
     L = [ 515093038992664081
