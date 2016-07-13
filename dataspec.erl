@@ -81,6 +81,9 @@ counter_dec(A)                    -> A.
 %%       0: turn off subgrouping;
 %%       N: subgroup N orders of magnitude into one (defaults to 3)
 %%
+%%   samples: N (must be an integer power of 2)
+%%       sample buffer size for collecting example data
+%%
 %%   strlen: true | false
 %%     subgrouping of strings by length
 %%
@@ -91,7 +94,7 @@ counter_dec(A)                    -> A.
 %%       false: no output
 %%       N: output progress info every N samples
 
-default_opts() ->
+opts() ->
     %% The following table specifies the options interpreted
     %%
     %%      name: name of option
@@ -101,8 +104,9 @@ default_opts() ->
 
     %% name          undefined     novalue
     [ {mag,          0,            3}
-    , {strlen,       false,        true}
     , {progress,     false,        100000}
+    , {samples,      16,           16}
+    , {strlen,       false,        true}
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
@@ -115,11 +119,11 @@ getopts() ->
     end.
 
 %% getter for individual options handling defaults and special cases;
-%% see table in default_opts() above
+%% see table in opts() above
 getopt(Opt) ->
     case proplists:get_value(Opt, getopts()) of
-        undefined -> element(2, lists:keyfind(Opt, 1, default_opts()));
-        true      -> element(3, lists:keyfind(Opt, 1, default_opts()));
+        undefined -> element(2, lists:keyfind(Opt, 1, opts()));
+        true      -> element(3, lists:keyfind(Opt, 1, opts()));
         Value     -> Value
     end.
 
@@ -271,23 +275,22 @@ mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 %% do this in a computationally cheap manner.
 
 %% Algorithm: we have a certain capacity of samples in sample_data,
-%% ?N_SAMPLES. When it is filled, we throw every other away.
-%% From then, we put only every other incoming sample in the list.
-%% When sample_data is filled again, we again throw every other away.
-%% From then, only every fourth incoming sample is put in the list,
-%% etc.
-
--define(N_SAMPLES, 16).
+%% configurable with the option 'samples'. When this buffer is filled,
+%% we throw every other element away.  From then on, we put only every
+%% other incoming sample in the list.  When sample_data is filled
+%% again, we again throw every other away.  From then on, only every
+%% fourth incoming sample is put in the list, etc.
 
 sample_data(Data) ->
-    {0, 1, 1, [Data]}. % divisor, n_received, size, sample_data
+    %% divisor, n_received, size, capacity, sample_data
+    {0, 1, 1, getopt(samples), [Data]}.
 
-sample_data(_Data, {Div, N, Size, Samples}) when (N+1) band Div =/= 0 ->
-    {Div, N+1, Size, Samples};
-sample_data(_Data, {Div, N, Size, Samples}) when Size =:= ?N_SAMPLES ->
-    {Div bsl 1 + 1, N+1, Size bsr 1, drop2(Samples)};
-sample_data(Data, {Div, N, Size, Samples}) ->
-    {Div, N+1, Size+1, [Data|Samples]}.
+sample_data(_Data, {Div, N, Size, Cap, Samples}) when (N+1) band Div =/= 0 ->
+    {Div, N+1, Size, Cap, Samples};
+sample_data(_Data, {Div, N, Size, Cap, Samples}) when Size =:= Cap ->
+    {Div bsl 1 + 1, N+1, Size bsr 1, Cap, drop2(Samples)};
+sample_data(Data, {Div, N, Size, Cap, Samples}) ->
+    {Div, N+1, Size+1, Cap, [Data|Samples]}.
 
 drop2(L) -> drop2(L, false, []).
 
@@ -381,15 +384,27 @@ drop2_test() ->
     ?assertEqual([1, 3, 5], drop2([1, 2, 3, 4, 5, 6])).
 
 sample_data_test() ->
-    SD0 = sample_data(1),
-    SD1 = lists:foldl(fun sample_data/2, SD0, lists:seq(2, 16)),
-    ?assertEqual({0,16,16,[16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]}, SD1),
-    SD2 = lists:foldl(fun sample_data/2, SD1, lists:seq(17, 32)),
-    ?assertEqual({1,32,16,[32,30,28,26,24,22,20,18,16,14,12,10,8,6,4,2]}, SD2),
-    SD3 = lists:foldl(fun sample_data/2, SD2, lists:seq(33, 64)),
-    ?assertEqual({3,64,16,[64,60,56,52,48,44,40,36,32,28,24,20,16,12,8,4]}, SD3),
-    SD4 = lists:foldl(fun sample_data/2, SD3, lists:seq(65, 128)),
-    ?assertEqual({7,128,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD4).
+    setopts([{samples, 8}]),
+    SD10 = sample_data(1),
+    SD11 = lists:foldl(fun sample_data/2, SD10, lists:seq(2, 8)),
+    ?assertEqual({0,8,8,8,[8,7,6,5,4,3,2,1]}, SD11),
+    SD12 = lists:foldl(fun sample_data/2, SD11, lists:seq(9, 16)),
+    ?assertEqual({1,16,8,8,[16,14,12,10,8,6,4,2]}, SD12),
+    SD13 = lists:foldl(fun sample_data/2, SD12, lists:seq(17, 32)),
+    ?assertEqual({3,32,8,8,[32,28,24,20,16,12,8,4]}, SD13),
+    SD14 = lists:foldl(fun sample_data/2, SD13, lists:seq(33, 64)),
+    ?assertEqual({7,64,8,8,[64,56,48,40,32,24,16,8]}, SD14),
+
+    setopts([{samples, 16}]),
+    SD20 = sample_data(1),
+    SD21 = lists:foldl(fun sample_data/2, SD20, lists:seq(2, 16)),
+    ?assertEqual({0,16,16,16,[16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]}, SD21),
+    SD22 = lists:foldl(fun sample_data/2, SD21, lists:seq(17, 32)),
+    ?assertEqual({1,32,16,16,[32,30,28,26,24,22,20,18,16,14,12,10,8,6,4,2]}, SD22),
+    SD23 = lists:foldl(fun sample_data/2, SD22, lists:seq(33, 64)),
+    ?assertEqual({3,64,16,16,[64,60,56,52,48,44,40,36,32,28,24,20,16,12,8,4]}, SD23),
+    SD24 = lists:foldl(fun sample_data/2, SD23, lists:seq(65, 128)),
+    ?assertEqual({7,128,16,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD24).
 
 alma_test() ->
     L = [ 515093038992664081
