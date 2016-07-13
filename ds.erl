@@ -1,7 +1,7 @@
--module(dataspec).
+-module(ds).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
-%% This module derives a spec of data based on a stream of values.
+%% `dataspec' derives a spec of data based on a stream of values.
 %% It can be used to eg. `discover' the data type stored in a table
 %% (column, etc.)
 
@@ -16,116 +16,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-%% Example: go through an ets table to spec a field based on a limited
-%% number of rows processed:
-%%   spec_tab_field(my_ets_table, #my_ets_record.my_field, 1000)
-%% Sending eg. 'inf' as Limit disables the limit.
-
--define(ex, ex).
--ifdef(ex).
-spec_tab_field(Tab, FieldNo, Limit) ->
-    fold_tab_field(fun add/2, new(), Tab, FieldNo, Limit).
-
-spec_tab_field(Tab, FieldNo, Limit, Opts) ->
-    setopts(Opts),
-    fold_tab_field(fun add/2, new(), Tab, FieldNo, Limit).
-
-
-fold_tab_field(Fun, Acc0, Tab, FieldNo, Limit) ->
-    Progress = getopt(progress),
-    progress_init_output(Progress),
-    fold_tab_field(Fun, Acc0, Tab, FieldNo, Limit, Progress, 0, ets:first(Tab)).
-
-fold_tab_field(_Fun, Acc, _Tab, _FieldNo, 0, Progress, Count, _Key) ->
-    progress_final_output(Progress, Count),
-    Acc;
-fold_tab_field(_Fun, Acc, _Tab, _FieldNo, _Limit, Progress, Count, '$end_of_table') ->
-    progress_final_output(Progress, Count),
-    Acc;
-fold_tab_field(Fun, Acc, Tab, FieldNo, Limit, Progress0, Count, Key) ->
-    Progress = progress_output(Progress0, Count+1),
-    [Rec] = ets:lookup(Tab, Key),
-    Field = element(FieldNo, Rec),
-    fold_tab_field(Fun, Fun(Field, Acc), Tab, FieldNo,
-                   counter_dec(Limit), Progress, Count+1,
-                   ets:next(Tab, Key)).
--endif.
-
-%% output progress information if configured to do so
-progress_output(false, _Count) -> false;
-progress_output(1, Count) ->
-    Progress = getopt(progress),
-    case Count div Progress rem 50 of
-        0 -> io:format("~B", [Count]);
-        _ -> io:put_chars(".")
-    end,
-    Progress;
-progress_output(Progress, _Count) -> counter_dec(Progress).
-
-progress_init_output(false)    -> false;
-progress_init_output(Progress) -> io:format("progress (every ~B): ", [Progress]).
-
-progress_final_output(false, _Count) -> false;
-progress_final_output(_Prog, Count)  -> io:format("~nprocessed: ~B~n~n", [Count]).
-
-%% decrement counters that might be disabled by being set to an atom
-counter_dec(N) when is_integer(N) -> N-1;
-counter_dec(A)                    -> A.
-
-%% dataspec operation can be controlled to some extent. Supported options:
-%%
-%% options influencing spec semantics:
-%%
-%%   mag: integer()
-%%     subgrouping of numerals by magnitude
-%%       0: turn off subgrouping;
-%%       N: subgroup N orders of magnitude into one (defaults to 3)
-%%
-%%   samples: N (must be an integer power of 2)
-%%       sample buffer size for collecting example data
-%%
-%%   strlen: true | false
-%%     subgrouping of strings by length
-%%
-%% other options:
-%%
-%%   progress: pos_integer() | false
-%%     output progress information
-%%       false: no output
-%%       N: output progress info every N samples
-
-opts() ->
-    %% The following table specifies the options interpreted
-    %%
-    %%      name: name of option
-    %% undefined: value to use if option is missing
-    %%   novalue: value to use if option is set to true
-    %%            (implicit if the option is supplied with no value)
-
-    %% name          undefined     novalue
-    [ {mag,          0,            3}
-    , {progress,     false,        100000}
-    , {samples,      16,           16}
-    , {strlen,       false,        true}
-    ].
-
-%% NB. using the process dict is ugly; passing Opts around is uglier.
-setopts(Opts) -> put(dataspec_opts, Opts).
-
-getopts() ->
-    case get(dataspec_opts) of
-        undefined -> [];
-        Opts      -> Opts
-    end.
-
-%% getter for individual options handling defaults and special cases;
-%% see table in opts() above
-getopt(Opt) ->
-    case proplists:get_value(Opt, getopts()) of
-        undefined -> element(2, lists:keyfind(Opt, 1, opts()));
-        true      -> element(3, lists:keyfind(Opt, 1, opts()));
-        Value     -> Value
-    end.
+%% Option handling: interface to ds_opts module
+getopt(Opt) -> ds_opts:getopt(Opt).
+setopts(Opts) -> ds_opts:setopts(Opts).
 
 %% Initialize a new data spec
 %% A data spec is a union of sub-specs, represented as a list of terms.
@@ -156,7 +49,7 @@ add(Data, Spec) -> add_value(Data, Spec).
 
 %% add a numeric under key 'integer' or 'float'
 add_numeric(Key, Value, Spec) ->
-    %% interpret the {mag, N} option as:
+    %% interpret the 'mag' option as:
     %% - if N = 0: no subgrouping based on magnitude
     %% - if N > 0: group N orders of magnitude into one subspec
     Path = case getopt(mag) of
@@ -177,7 +70,7 @@ add_list(list, L, Spec) -> % generic list is type-tagged with the length of the 
     %% build a spec recursively for all members of the list
     merge_spec(Spec, [{list, length(L)}], fun f_merge_recur/2, L);
 add_list(Type, L, Spec) -> % specially classified list, eg. str_alpha
-    %% the strlen option enables subgrouping strings by length
+    %% the 'strlen' option enables subgrouping strings by length
     Path = case getopt(strlen) of
                false -> [Type];
                true  -> [Type, {len, length(L)}]
