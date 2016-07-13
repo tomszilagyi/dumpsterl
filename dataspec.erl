@@ -18,41 +18,91 @@
 
 %% Example: go through an ets table to spec a field based on a limited
 %% number of rows processed:
-%%   fold_tab_field(my_ets_table, #my_ets_record.my_field, 1000)
+%%   spec_tab_field(my_ets_table, #my_ets_record.my_field, 1000)
+%% Sending eg. 'inf' as Limit disables the limit.
 
 -define(ex, ex).
 -ifdef(ex).
-fold_tab_field(Tab, FieldNo, Limit) ->
-    fold_tab_field(Tab, FieldNo, ets:first(Tab), new(), Limit).
+spec_tab_field(Tab, FieldNo, Limit) ->
+    fold_tab_field(fun add/2, new(), Tab, FieldNo, Limit).
 
-fold_tab_field(Tab, FieldNo, Limit, Opts) ->
+spec_tab_field(Tab, FieldNo, Limit, Opts) ->
     setopts(Opts),
-    fold_tab_field(Tab, FieldNo, ets:first(Tab), new(), Limit).
+    fold_tab_field(fun add/2, new(), Tab, FieldNo, Limit).
 
-fold_tab_field(_Tab, _FieldNo, _Key, Spec, 0) -> Spec;
-fold_tab_field(_Tab, _FieldNo, '$end_of_table', Spec, _Limit) -> Spec;
-fold_tab_field(Tab, FieldNo, Key, Spec0, Limit) ->
+
+fold_tab_field(Fun, Acc0, Tab, FieldNo, Limit) ->
+    Progress = getopt(progress),
+    progress_init_output(Progress),
+    fold_tab_field(Fun, Acc0, Tab, FieldNo, Limit, Progress, 0, ets:first(Tab)).
+
+fold_tab_field(_Fun, Acc, _Tab, _FieldNo, 0, Progress, Count, _Key) ->
+    progress_final_output(Progress, Count),
+    Acc;
+fold_tab_field(_Fun, Acc, _Tab, _FieldNo, _Limit, Progress, Count, '$end_of_table') ->
+    progress_final_output(Progress, Count),
+    Acc;
+fold_tab_field(Fun, Acc, Tab, FieldNo, Limit, Progress0, Count, Key) ->
+    Progress = progress_output(Progress0, Count+1),
     [Rec] = ets:lookup(Tab, Key),
-    Data = element(FieldNo, Rec),
-    %io:format("Data: ~p~n", [Data]),
-    Spec = add(Data, Spec0),
-    fold_tab_field(Tab, FieldNo, ets:next(Tab, Key), Spec, Limit-1).
+    Field = element(FieldNo, Rec),
+    fold_tab_field(Fun, Fun(Field, Acc), Tab, FieldNo,
+                   counter_dec(Limit), Progress, Count+1,
+                   ets:next(Tab, Key)).
 -endif.
 
+%% output progress information if configured to do so
+progress_output(false, _Count) -> false;
+progress_output(1, Count) ->
+    Progress = getopt(progress),
+    case Count div Progress rem 50 of
+        0 -> io:format("~B", [Count]);
+        _ -> io:put_chars(".")
+    end,
+    Progress;
+progress_output(Progress, _Count) -> counter_dec(Progress).
 
-%% dataspec output can be controlled to some extent. Supported options:
+progress_init_output(false)    -> false;
+progress_init_output(Progress) -> io:format("progress (every ~B): ", [Progress]).
+
+progress_final_output(false, _Count) -> false;
+progress_final_output(_Prog, Count)  -> io:format("~nprocessed: ~B~n~n", [Count]).
+
+%% decrement counters that might be disabled by being set to an atom
+counter_dec(N) when is_integer(N) -> N-1;
+counter_dec(A)                    -> A.
+
+%% dataspec operation can be controlled to some extent. Supported options:
+%%
+%% options influencing spec semantics:
 %%
 %%   mag: integer()
 %%     subgrouping of numerals by magnitude
-%%        0: turn off subgrouping;
-%%        N: subgroup N orders of magnitude in one; defults to 3
+%%       0: turn off subgrouping;
+%%       N: subgroup N orders of magnitude into one (defaults to 3)
 %%
 %%   strlen: true | false
 %%     subgrouping of strings by length
 %%
+%% other options:
+%%
+%%   progress: pos_integer() | false
+%%     output progress information
+%%       false: no output
+%%       N: output progress info every N samples
+
 default_opts() ->
-    [ {mag, 3}
-    , {strlen, false}
+    %% The following table specifies the options interpreted
+    %%
+    %%      name: name of option
+    %% undefined: value to use if option is missing
+    %%   novalue: value to use if option is set to true
+    %%            (implicit if the option is supplied with no value)
+
+    %% name          undefined     novalue
+    [ {mag,          0,            3}
+    , {strlen,       false,        true}
+    , {progress,     false,        100000}
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
@@ -60,8 +110,17 @@ setopts(Opts) -> put(dataspec_opts, Opts).
 
 getopts() ->
     case get(dataspec_opts) of
-        undefined -> default_opts();
+        undefined -> [];
         Opts      -> Opts
+    end.
+
+%% getter for individual options handling defaults and special cases;
+%% see table in default_opts() above
+getopt(Opt) ->
+    case proplists:get_value(Opt, getopts()) of
+        undefined -> element(2, lists:keyfind(Opt, 1, default_opts()));
+        true      -> element(3, lists:keyfind(Opt, 1, default_opts()));
+        Value     -> Value
     end.
 
 %% Initialize a new data spec
@@ -94,14 +153,11 @@ add(Data, Spec) -> add_value(Data, Spec).
 %% add a numeric under key 'integer' or 'float'
 add_numeric(Key, Value, Spec) ->
     %% interpret the {mag, N} option as:
-    %% - if N = 0 or the option is missing: no subgrouping based on magnitude
+    %% - if N = 0: no subgrouping based on magnitude
     %% - if N > 0: group N orders of magnitude into one subspec
-    %% - if mag is present as a boolean option, N defaults to 3.
-    Path = case proplists:get_value(mag, getopts()) of
-               undefined -> [Key];
-               0         -> [Key];
-               true      -> [Key, {mag, mag(Value, 3)}];
-               N         -> [Key, {mag, mag(Value, N)}]
+    Path = case getopt(mag) of
+               0 -> [Key];
+               N -> [Key, {mag, mag(Value, N)}]
            end,
     merge_spec(Spec, Path, fun f_merge_num/2, Value).
 
@@ -118,7 +174,7 @@ add_list(list, L, Spec) -> % generic list is type-tagged with the length of the 
     merge_spec(Spec, [{list, length(L)}], fun f_merge_recur/2, L);
 add_list(Type, L, Spec) -> % specially classified list, eg. str_alpha
     %% the strlen option enables subgrouping strings by length
-    Path = case proplists:get_value(strlen, getopts(), false) of
+    Path = case getopt(strlen) of
                false -> [Type];
                true  -> [Type, {len, length(L)}]
            end,
@@ -152,9 +208,9 @@ f_merge_recur({ok, SpecL}, L) -> lists:zipwith(fun add/2, L, SpecL).
 %% general hierarchical storage for specs
 %%   Spec: spec to modify: [{Key, Value|Subspec}]
 %%   Path: list of key terms specifying spec location
-%%   Fun: arinty 2 merge function to add data to spec
-%%        (false, Data)        -> init_value(Data);
-%%        ({Key, Value}, Data) -> merge_value(Value, Data).
+%%   Fun: arity 2 merge function to add data to spec:
+%%        (error, Data)       -> init_value(Data);
+%%        ({ok, Value}, Data) -> merge_value(Value, Data).
 %%   Data: term to merge into spec
 merge_spec(Spec, [Key], Fun, Data) ->
     %io:format("merge_spec: Spec: ~p  Key: ~p~n", [Spec, Key]),
@@ -261,12 +317,14 @@ merge_spec_hier_test() ->
     ?assertEqual([{key1, [{key2, 2}, {key3, 1}]}], Spec3).
 
 add_integer_test() ->
+    setopts([{mag, 3}]),
     L = [1, 4, 9, 0, -5],
     Spec = lists:foldl(fun add/2, new(), L),
     ?assertEqual([{integer, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
                   {{value, 0}, 1}], Spec).
 
 add_float_test() ->
+    setopts([{mag, 3}]),
     L = [1.3, 4.12, 9.99, 0.0, -5.31],
     Spec = lists:foldl(fun add/2, new(), L),
     ?assertEqual([{float, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
@@ -287,6 +345,7 @@ add_value_test() ->
                  ], Spec).
 
 add_list_test() ->
+    setopts([{mag, 3}]),
     Spec0 = new([1, 2]),
     ?assertEqual([{{list, 2},
                    [[{integer, [{{mag, 0}, {1, 1, 1}}]}],
