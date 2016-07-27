@@ -24,6 +24,14 @@
 %%
 %% other options:
 %%
+%%   dump: filename() | false
+%%     dump the accumulated spec on each progress tick;
+%%     only works in case progress output is enabled.
+%%       false: no dump is written
+%%       Filename: the accumulated spec is dumped as an Erlang binary
+%%         to this filename on each progress tick (dot or number).
+%%         Defaults to "dataspec.bin" if option is set with no value.
+%%
 %%   progress: pos_integer() | false
 %%     output progress information
 %%       false: no output
@@ -35,10 +43,12 @@ opts() ->
     %%      name: name of option
     %% undefined: value to use if option is missing
     %%   novalue: value to use if option is set to true
-    %%            (implicit if the option is supplied with no value)
+    %%            (implicit if the option is supplied with no value;
+    %%             also used if supplied value fails to validate)
 
     %% name          undefined     novalue
-    [ {mag,          0,            3}
+    [ {dump,         false,        "dataspec.bin"}
+    , {mag,          0,            3}
     , {progress,     false,        100000}
     , {samples,      16,           16}
     , {strlen,       false,        true}
@@ -65,13 +75,15 @@ do_normalize_opts(Opt, Opts) ->
     proplists:property(Key, Value).
 
 default_opt(Key, Value) ->
-    Default = getopt(Key, []),
+    Default = getopt(Key, [Key]),
     io:format("** option ~p: invalid value ~p; using default ~p~n",
               [Key, Value, Default]),
     Default.
 
 %% Normalize (change) the value of options;
 %% throw errors or exceptions if data is invalid.
+normalize_opt(dump, S) ->
+    true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), S;
 normalize_opt(mag, I) ->
     true = is_integer(I) andalso I >= 0, I;
 normalize_opt(progress, P) ->

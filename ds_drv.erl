@@ -54,13 +54,15 @@ fold_tab(Fun, Acc0, Type, Tab, FieldNo, Limit) ->
 
 fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldNo, 0, Progress, Count, _Key) ->
     progress_final_output(Progress, Count),
+    dump_acc(Acc),
     Acc;
 fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldNo, _Limit, Progress, Count, '$end_of_table') ->
     progress_final_output(Progress, Count),
+    dump_acc(Acc),
     Acc;
 fold_tab(Fun, Acc0, {_FirstF, ReadF, NextF} = Accessors,
          Tab, FieldNo, Limit, Progress0, Count, Key) ->
-    Progress = progress_output(Progress0, Count+1),
+    Progress = progress_output(Progress0, Acc0, Count+1),
     RecL = ReadF(Tab, Key),
     FoldF = fun(Rec, FoldAcc) ->
                     Field = elem(FieldNo, Rec),
@@ -68,27 +70,35 @@ fold_tab(Fun, Acc0, {_FirstF, ReadF, NextF} = Accessors,
             end,
     Acc = lists:foldl(FoldF, Acc0, RecL),
     fold_tab(Fun, Acc, Accessors, Tab, FieldNo,
-                   counter_dec(Limit), Progress, Count+1, NextF(Tab, Key)).
+             counter_dec(Limit), Progress, Count+1, NextF(Tab, Key)).
 
 elem(0, Rec) -> Rec;
 elem(F, Rec) -> element(F, Rec).
 
 %% output progress information if configured to do so
-progress_output(false, _Count) -> false;
-progress_output(1, Count) ->
+progress_output(false, _Acc, _Count) -> false;
+progress_output(1, Acc, Count) ->
     Progress = ds_opts:getopt(progress),
     case Count div Progress rem 50 of
         0 -> io:format("~B", [Count]);
         _ -> io:put_chars(".")
     end,
+    dump_acc(Acc),
     Progress;
-progress_output(Progress, _Count) -> counter_dec(Progress).
+progress_output(Progress, _Acc, _Count) -> counter_dec(Progress).
 
 progress_init_output(false)    -> false;
 progress_init_output(Progress) -> io:format("progress (every ~B): ", [Progress]).
 
 progress_final_output(false, _Count) -> false;
 progress_final_output(_Prog, Count)  -> io:format("~nprocessed: ~B~n~n", [Count]).
+
+%% dump the accumulated spec if dataspec is configured to do dumps
+dump_acc(Acc) ->
+    case ds_opts:getopt(dump) of
+        false    -> ok;
+        Filename -> ok = file:write_file(Filename, erlang:term_to_binary(Acc))
+    end.
 
 %% decrement counters that might be disabled by being set to an atom
 counter_dec(N) when is_integer(N) -> N-1;
