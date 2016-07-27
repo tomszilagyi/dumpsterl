@@ -8,11 +8,7 @@
 -export([ add/2
         , new/0
         , new/1
-        , setopts/1
         ]).
-
-% DEBUG:
--compile([export_all]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -166,8 +162,8 @@ mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 %% comes in, retain a limited selection of samples taken uniformly
 %% across the already received (finite) part of the stream. We want to
 %% do this in a computationally cheap manner.
-
-%% Algorithm: we have a certain capacity of samples in sample_data,
+%%
+%% Algorithm: we have a certain capacity of 2^N samples in sample_data,
 %% configurable with the option 'samples'. When this buffer is filled,
 %% we throw every other element away.  From then on, we put only every
 %% other incoming sample in the list.  When sample_data is filled
