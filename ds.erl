@@ -8,6 +8,9 @@
 -export([ add/2
         , new/0
         , new/1
+        , sample_data/1
+        , sample_data/2
+        , get_samples/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -187,6 +190,9 @@ drop2([], _DropThis, Acc) -> lists:reverse(Acc);
 drop2([E|R], false, Acc)  -> drop2(R, true, [E|Acc]);
 drop2([_E|R], true, Acc)  -> drop2(R, false, Acc).
 
+%% get the list of samples collected from the sample_data tuple
+get_samples({_Div, _N, _Size, _Cap, Samples}) -> Samples.
+
 
 %% Tests
 
@@ -293,7 +299,10 @@ sample_data_test() ->
     SD23 = lists:foldl(fun sample_data/2, SD22, lists:seq(33, 64)),
     ?assertEqual({3,64,16,16,[64,60,56,52,48,44,40,36,32,28,24,20,16,12,8,4]}, SD23),
     SD24 = lists:foldl(fun sample_data/2, SD23, lists:seq(65, 128)),
-    ?assertEqual({7,128,16,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD24).
+    ?assertEqual({7,128,16,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD24),
+
+    ?assertEqual([128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8], get_samples(SD24)).
+
 
 alma_test() ->
     L = [ 515093038992664081
