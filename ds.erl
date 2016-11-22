@@ -8,6 +8,7 @@
 -export([ add/2
         , new/0
         , new/1
+        , sample_data/0
         , sample_data/1
         , sample_data/2
         , get_samples/1
@@ -19,123 +20,140 @@
 getopt(Opt) -> ds_opts:getopt(Opt).
 setopts(Opts) -> ds_opts:setopts(Opts).
 
+%% A data spec is a list of type specs.
+%% It is most often hierarchically nested, hence we have
+%% a hierarchical tree of type classes.
+%% Nodes of this tree are represented as tuples:
+%%
+%% {Class, Count, SampleData, SubSpec | LeafData}
+%%
+%% - Class is a term (in most cases an atom) describing
+%%   the type this node represents in the type hierarchy.
+%%   Toplevel type examples: integer, atom, list.
+%% - Count is an integer count of data items covered by
+%%   this type class.
+%% - SampleData contains samples of the data values and
+%%   statistics derived from the data processed.
+%% - SubSpec is a list of subtype nodes, if any, or [].
+%%   It is up to the handler for Class to know if and how
+%%   to further categorize a piece of data into subtypes.
+%%   For leaf nodes, this holds type-specific leaf data,
+%%   eg. for integers a distribution of values seen.
+
+%% The type hierarchy is defined by types()
+%% - subtypes are mutually exclusive
+%% - dynamically created subtypes denoted by '$dynamic',
+%%   fun returns the actual subtype used based on the data
+%% - '$dynamic' must be last in the list of subtypes
+
+types() ->
+    [ {root
+      , [ {numeric, fun erlang:is_number/1}
+        , {atom, fun erlang:is_atom/1}
+        , {list, fun erlang:is_list/1}
+        , {tuple, fun erlang:is_tuple/1}
+       ]}
+    , {numeric
+      , [ {integer, fun erlang:is_integer/1}
+        , {float, fun erlang:is_float/1}
+        ]}
+    , {list
+      , [ {str_printable, fun is_str_printable/1}
+        , {'$dynamic', fun length/1}
+        ]}
+    , {str_printable
+      , [ {str_alnum, fun is_str_alnum/1}
+        ]}
+    , {str_alnum
+      , [ {str_integer, fun is_str_integer/1}
+        , {str_alpha, fun is_str_alpha/1}
+        ]}
+    ] ++ optional_types().
+
+optional_types() ->
+    case getopt(mag) of
+        0 -> [];
+        N -> [ {integer, [ {'$dynamic', fun(V) -> mag(V, N) end} ]}
+             , {float,   [ {'$dynamic', fun(V) -> mag(V, N) end} ]}
+             ]
+    end.
+
 %% Initialize a new data spec
-%% A data spec is a union of sub-specs, represented as a list of terms.
-%% Terms are tuples describing various types of data.
-%% - {integer, Min, Max, Count}
-%% - {float, Min, Max, Count}
-%% - {Value, Count}
-new() -> [].
+new() -> new(root).
+
+new(Class) -> {Class, 0, sample_data(), []}.
 
 %% Initialize, immediately adding one data term
-new(Data) -> add(Data, new()).
-
+new(Class, Data) -> add(Data, new(Class)).
 
 %% Add an instance of Data to Spec.
 %% If Spec already contains Data, do nothing.
 %% Else, extend Spec in the smallest possible way to include Data.
 %% add/2 is written so it can be used as a function to lists:foldl/3.
-add(0, Spec) -> add_value(0, Spec);
-add(0.0, Spec) -> add_value(0.0, Spec);
-add(I, Spec) when is_integer(I) -> add_numeric(integer, I, Spec);
-add(F, Spec) when is_float(F) -> add_numeric(float, F, Spec);
-add(A, Spec) when is_atom(A) -> add_atom(A, Spec);
-add([], Spec) -> add_value([], Spec);
-add({}, Spec) -> add_value({}, Spec);
-add(L, Spec) when is_list(L) -> add_list(classify_list(L), L, Spec);
-add(T, Spec) when is_tuple(T) -> add_tuple(T, Spec);
-add(Data, Spec) -> add_value(Data, Spec).
+%%
+%% When adding a value to the spec:
+%% - each class knows which subtype the data fits in.
+%% Adding a new value is a recursive process:
+%% - starting from the root class, each class
+%%   - accounts for the new value itself;
+%%   - chooses appropriate subtype (if any) and
+%%   - passes the value to that subtype.
+%%
+%% Eg. when adding the value 100, 'root' accounts
+%% for this (increases counter of values, etc),
+%% determines that it is a numeric type, and so
+%% passes it to 'numeric' which, in turn, determines
+%% it is an integer and passes to 'integer', which
+%% might still subtype it based on its magnitude.
+%% On all levels of the hierarchy, counters will be
+%% increased and samples will be collected.
 
-%% add a numeric under key 'integer' or 'float'
-add_numeric(Key, Value, Spec) ->
-    %% interpret the 'mag' option as:
-    %% - if N = 0: no subgrouping based on magnitude
-    %% - if N > 0: group N orders of magnitude into one subspec
-    Path = case getopt(mag) of
-               0 -> [Key];
-               N -> [Key, {mag, mag(Value, N)}]
-           end,
-    merge_spec(Spec, Path, fun f_merge_num/2, Value).
-
-%% add an atom
-add_atom(Atom, Spec) ->
-    merge_spec(Spec, [atom, Atom], fun f_merge_count/2, dummy).
-
-%% add a value not in any broader set
-add_value(Value, Spec) ->
-    merge_spec(Spec, [{value, Value}], fun f_merge_count/2, Value).
-
-add_list(list, L, Spec) -> % generic list is type-tagged with the length of the list
-    %% build a spec recursively for all members of the list
-    merge_spec(Spec, [{list, length(L)}], fun f_merge_recur/2, L);
-add_list(Type, L, Spec) -> % specially classified list, eg. str_alpha
-    %% the 'strlen' option enables subgrouping strings by length
-    Path = case getopt(strlen) of
-               false -> [Type];
-               true  -> [Type, {len, length(L)}]
-           end,
-    merge_spec(Spec, Path, fun f_merge_sample/2, L).
-
-add_tuple(T, Spec) ->
-    merge_spec(Spec, [{tuple, tuple_size(T)}], fun f_merge_recur/2, tuple_to_list(T)).
-
-%% spec merge function for counting values
-%% spec data: Count
-f_merge_count(error, _Data)       -> 1;
-f_merge_count({ok, Count}, _Data) -> Count+1.
-
-%% spec merge function for numerals
-%% spec data: {Count, Min, Max}
-f_merge_num(error, Data)                                   -> {1, Data, Data};
-f_merge_num({ok, {Count, Min, Max}}, Data) when Data < Min -> {Count+1, Data, Max};
-f_merge_num({ok, {Count, Min, Max}}, Data) when Data > Max -> {Count+1, Min, Data};
-f_merge_num({ok, {Count, Min, Max}}, _Data)                -> {Count+1, Min, Max}.
-
-%% spec merge function for sampling: keep count and store a sample of data.
-%% spec data: {Count, SampleData}
-f_merge_sample(error, Data)             -> {1, sample_data(Data)};
-f_merge_sample({ok, {Count, SD}}, Data) -> {Count+1, sample_data(Data, SD)}.
-
-%% spec merge function for recursively spec'ing compound structures
-%% spec data: list of subspecs, one per item
-f_merge_recur(error, L)       -> lists:map(fun new/1, L);
-f_merge_recur({ok, SpecL}, L) -> lists:zipwith(fun add/2, L, SpecL).
-
-%% general hierarchical storage for specs
-%%   Spec: spec to modify: [{Key, Value|Subspec}]
-%%   Path: list of key terms specifying spec location
-%%   Fun: arity 2 merge function to add data to spec:
-%%        (error, Data)       -> init_value(Data);
-%%        ({ok, Value}, Data) -> merge_value(Value, Data).
-%%   Data: term to merge into spec
-merge_spec(Spec, [Key], Fun, Data) ->
-    %io:format("merge_spec: Spec: ~p  Key: ~p~n", [Spec, Key]),
-    orddict:store(Key, Fun(orddict:find(Key, Spec), Data), Spec);
-merge_spec(Spec, [Key|Rest], Fun, Data) ->
-    %io:format("merge_spec: Spec: ~p  Key: ~p  Rest: ~p~n", [Spec, Key, Rest]),
-    Subspec = case orddict:find(Key, Spec) of
-                  error          -> merge_spec([], Rest, Fun, Data);
-                  {ok, Subspec0} -> merge_spec(Subspec0, Rest, Fun, Data)
-              end,
-    orddict:store(Key, Subspec, Spec).
-
-%% List classification
-%% we try to fit the list into a category as narrow as possible;
-%% spec functions to be listed in decreasing order of specificity!
-classify_list(L) ->
-    SpecList = [ {str_integer, fun is_str_integer/1}
-               , {str_alpha, fun is_str_alpha/1}
-               , {str_alnum, fun is_str_alnum/1}
-               , {str_printable, fun is_str_printable/1}
-               ],
-    classify_list(L, SpecList).
-
-classify_list(_L, []) -> list; % fallback to generic case
-classify_list(L, [{Spec, SpecFun} | Rest]) ->
-    case SpecFun(L) of
-        false -> classify_list(L, Rest);
-        true  -> Spec
+add(V, {Class, Count, SD, SubSpec}) ->
+    case lists:keyfind(Class, 1, types()) of
+        false -> %% leaf type
+            {Class, Count+1, sample_data(V, SD), leaf_data(V, Class, SubSpec)};
+        {Class, SubTypes} -> %% abstract type
+            SubType = subtype(V, SubTypes),
+            {Class, Count+1, sample_data(V, SD), merge(V, SubType, SubSpec)}
     end.
+
+%% choose the appropriate subtype based on the filters
+%% in the type hierarchy, or dynamically generate subtype.
+subtype(_V, []) -> untyped;
+subtype(V, [{'$dynamic', SubTypeFun} | _Rest]) ->
+    SubTypeFun(V);
+subtype(V, [{SubType, FilterFun} | Rest]) ->
+    case FilterFun(V) of
+        true  -> SubType;
+        false -> subtype(V, Rest)
+    end.
+
+%% add(0, Spec) -> add_value(0, Spec);
+%% add(0.0, Spec) -> add_value(0.0, Spec);
+%% add(I, Spec) when is_integer(I) -> add_numeric(integer, I, Spec);
+%% add(F, Spec) when is_float(F) -> add_numeric(float, F, Spec);
+%% add(A, Spec) when is_atom(A) -> add_atom(A, Spec);
+%% add([], Spec) -> add_value([], Spec);
+%% add({}, Spec) -> add_value({}, Spec);
+%% add(L, Spec) when is_list(L) -> add_list(classify_list(L), L, Spec);
+%% add(T, Spec) when is_tuple(T) -> add_tuple(T, Spec);
+%% add(Data, Spec) -> add_value(Data, Spec).
+
+
+%% choose subspec given by Class or create it from scratch,
+%% add V to it and returns the resulting Spec.
+merge(V, Class, Spec) ->
+    case lists:keyfind(Class, 1, Spec) of
+        false   -> [new(Class, V) | Spec];
+        SubSpec -> lists:keystore(Class, 1, Spec, add(V, SubSpec))
+    end.
+
+leaf_data(V, atom, LeafData) ->
+    orddict:update_counter(V, 1, LeafData);
+%% Add clauses for various Class to extend LeafData with V
+%% eg. min, max, distrib, zero-count etc. for integers.
+%% The interpretation of this data is class-specific.
+leaf_data(_V, _Class, LeafData) -> LeafData.
 
 %% string classifier functions
 is_str_integer(S) -> string_in_ranges(S, [{$0, $9}]).
@@ -173,6 +191,10 @@ mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 %% again, we again throw every other away.  From then on, only every
 %% fourth incoming sample is put in the list, etc.
 
+sample_data() ->
+    %% divisor, n_received, size, capacity, sample_data
+    {0, 0, 0, getopt(samples), []}.
+
 sample_data(Data) ->
     %% divisor, n_received, size, capacity, sample_data
     {0, 1, 1, getopt(samples), [Data]}.
@@ -196,78 +218,11 @@ get_samples({_Div, _N, _Size, _Cap, Samples}) -> Samples.
 
 %% Tests
 
-merge_spec_flat_test() ->
-    Spec0 = new(),
-    Spec1 = merge_spec(Spec0, [key1], fun f_merge_count/2, data),
-    ?assertEqual([{key1, 1}], Spec1),
-    Spec2 = merge_spec(Spec1, [key2], fun f_merge_count/2, data),
-    ?assertEqual([{key1, 1}, {key2, 1}], Spec2),
-    Spec3 = merge_spec(Spec2, [key1], fun f_merge_count/2, data),
-    ?assertEqual([{key1, 2}, {key2, 1}], Spec3).
-
-merge_spec_hier_test() ->
-    Spec0 = new(),
-    Spec1 = merge_spec(Spec0, [key1, key2], fun f_merge_count/2, data),
-    ?assertEqual([{key1, [{key2, 1}]}], Spec1),
-    Spec2 = merge_spec(Spec1, [key1, key3], fun f_merge_count/2, data),
-    ?assertEqual([{key1, [{key2, 1}, {key3, 1}]}], Spec2),
-    Spec3 = merge_spec(Spec2, [key1, key2], fun f_merge_count/2, data),
-    ?assertEqual([{key1, [{key2, 2}, {key3, 1}]}], Spec3).
-
-add_integer_test() ->
-    setopts([{mag, 3}]),
-    L = [1, 4, 9, 0, -5],
-    Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{integer, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
-                  {{value, 0}, 1}], Spec).
-
-add_float_test() ->
-    setopts([{mag, 3}]),
-    L = [1.3, 4.12, 9.99, 0.0, -5.31],
-    Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{float, [{{mag, 0}, {length(L)-1, lists:min(L), lists:max(L)}}]},
-                  {{value, 0.0}, 1}], Spec).
-
-add_atom_test() ->
-    L = [this, that, this],
-    Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([{atom, [ {that, 1}
-                         , {this, 2}
-                         ]}], Spec).
-
-add_value_test() ->
-    L = [[], 0, []],
-    Spec = lists:foldl(fun add/2, new(), L),
-    ?assertEqual([ {{value, 0}, 1}
-                 , {{value, []}, 2}
-                 ], Spec).
-
-add_list_test() ->
-    setopts([{mag, 3}]),
-    Spec0 = new([1, 2]),
-    ?assertEqual([{{list, 2},
-                   [[{integer, [{{mag, 0}, {1, 1, 1}}]}],
-                    [{integer, [{{mag, 0}, {1, 2, 2}}]}]]}], Spec0),
-    Spec1 = add([1, 3], Spec0),
-    ?assertEqual([{{list, 2},
-                   [[{integer, [{{mag, 0}, {2, 1, 1}}]}],
-                    [{integer, [{{mag, 0}, {2, 2, 3}}]}]]}], Spec1).
-
-%% rec_test() ->
-%%     R = alma,
-%%     record_info(fields, R).
-
 char_in_ranges_test() ->
     ?assertNot(char_in_ranges($A, [])),
     ?assertNot(char_in_ranges($A, [{$a, $z}])),
     ?assert(char_in_ranges($A, [{$A, $Z}])),
     ?assert(char_in_ranges($A, [{$A, $Z}, {$a, $z}])).
-
-classify_list_test() ->
-    ?assertEqual(str_integer, classify_list("0123456789")),
-    ?assertEqual(str_alpha, classify_list("aAbBcCxXyYzZ")),
-    ?assertEqual(str_alnum, classify_list("abcDEF123")),
-    ?assertEqual(str_printable, classify_list("This is a (printable) string!")).
 
 drop2_test() ->
     ?assertEqual([],        drop2([])),
@@ -280,7 +235,9 @@ drop2_test() ->
 
 sample_data_test() ->
     setopts([{samples, 8}]),
+
     SD10 = sample_data(1),
+    ?assertEqual(SD10, sample_data(1, sample_data())),
     SD11 = lists:foldl(fun sample_data/2, SD10, lists:seq(2, 8)),
     ?assertEqual({0,8,8,8,[8,7,6,5,4,3,2,1]}, SD11),
     SD12 = lists:foldl(fun sample_data/2, SD11, lists:seq(9, 16)),
@@ -302,109 +259,3 @@ sample_data_test() ->
     ?assertEqual({7,128,16,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD24),
 
     ?assertEqual([128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8], get_samples(SD24)).
-
-
-alma_test() ->
-    L = [ 515093038992664081
-        , 515073483181164481
-        , 40710133123535078
-        , 515123497979824288
-        , 4893771330
-        , 516043709666134184
-        , 514102101126374480
-        , 514012531138744982
-        , 41202195133174076
-        , 1295605314
-        , 11511467663415974
-        , "112565013005069"
-        , "11256501300506912"
-        , 41205179623328878
-        , 514051140156809388
-        , 41512717723271171
-        , 5084876331
-        , 516011927036469480
-        , 41103539808650672
-        , 514122371907089187
-        , 515102101149918989
-        , 515083100612458682
-        , 1767454231
-        , 0
-        , 0
-        , 513101513560049589
-        , 10803491380215771
-        , 5351657231
-        , 516044483611233488
-        , 516023359455077782
-        , 82130510420040119108
-        , 41204179636652372
-        , 11203189241035875
-        , 516042101148626683
-        , 516012375408070685
-        , 11306427851622277
-        , 513111012335095181
-        , 9370430014003480501610064591118
-        , 514051196430019087
-        , 2856722207
-        , 3532068241
-        , 515112375426043087
-        , 515122633671538880
-        , 516052874282392182
-        , 516054195143471488
-        , 516043616127968680
-        , 516034699560030987
-        , 515062926282180981
-        , 514072531893693587
-        , 514032101102091483
-        , []
-        , 515082814976436784
-        , 515092598709688187
-        , 516063937098249081
-        , 516053655567274487
-        , 1575
-        , 41303941909500376
-        , 1537406230
-        , 4093528241
-        , 515083670399122982
-        , 514072375461551284
-        , 516033359284707185
-        , 514122106058832880
-        , 0
-        , 515073359769705780
-        , 516044642381456385
-        , 11209429575492670
-        , 515032261111073786
-        , 3199255210
-        , 515083478804586480
-        , 516043655518835488
-        , 514032215940996685
-        , 81160400000250981800
-        , 41306702864767377
-        , 515033609772960288
-        , 1152921521346574788
-        , 1247727251
-        , 1136006222
-        , 515123359417798583
-        , 516052845642103980
-        , 516043198172236289
-        , 0
-        , 10905432882512973
-        , 41111890009064373
-        , 0
-        , 11208440689215478
-        , 515053359753447989
-        , 516013713077383386
-        , 516053860313561282
-        , 2766633340
-        , 516013359261588883
-        , 516043359721260986
-        , 515073242481260286
-        , 515052757828039387
-        , 516063693195667788
-        , 516024206715895280
-        , 11503422450622472
-        , 514012535510170583
-        , 41108892220601871
-        , 41002120712104577
-        , 4371992221
-        ],
-    lists:foldl(fun add/2, new(), L).

@@ -1,0 +1,15 @@
+Dataspec rewrite
+
+The purpose of this rewrite: create a durable, extendable and
+user-friendly framework for data exploration in NoSQL environments.
+
+** generalized and pluggable type system
+- count parent categories and imbedded categories, too
+- count skipped rows, too (where accessor throws)
+** standard and pluggable spec format
+- also for programmatic report creation
+** advanced features for data mining
+- sampling
+- tag each data with arbitrary attributes
+  - timestamp (when was this data created)
+  - key (to read back the whole record)
