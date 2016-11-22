@@ -42,9 +42,10 @@ setopts(Opts) -> ds_opts:setopts(Opts).
 
 %% The type hierarchy is defined by types()
 %% - subtypes are mutually exclusive
-%% - dynamically created subtypes denoted by '$dynamic',
-%%   fun returns the actual subtype used based on the data
-%% - '$dynamic' must be last in the list of subtypes
+%% - dynamically created subtypes denoted by
+%%     {'$dynamic', Tag, Fun}
+%%   where the actual subtype is derived as {Tag, Fun(Data)}
+%% - dynamic subtypes must be last in the list of subtypes
 
 types() ->
     [ {root
@@ -52,14 +53,15 @@ types() ->
         , {atom, fun erlang:is_atom/1}
         , {list, fun erlang:is_list/1}
         , {tuple, fun erlang:is_tuple/1}
-       ]}
+        ]}
     , {numeric
       , [ {integer, fun erlang:is_integer/1}
         , {float, fun erlang:is_float/1}
         ]}
     , {list
-      , [ {str_printable, fun is_str_printable/1}
-        , {'$dynamic', fun length/1}
+      , [ {empty, fun(L) -> L =:= [] end}
+        , {str_printable, fun is_str_printable/1}
+        , {'$dynamic', list, fun length/1}
         ]}
     , {str_printable
       , [ {str_alnum, fun is_str_alnum/1}
@@ -68,13 +70,17 @@ types() ->
       , [ {str_integer, fun is_str_integer/1}
         , {str_alpha, fun is_str_alpha/1}
         ]}
+    , {tuple
+      , [ {empty, fun(T) -> T =:= {} end}
+        , {'$dynamic', tuple, fun size/1}
+        ]}
     ] ++ optional_types().
 
 optional_types() ->
     case getopt(mag) of
         0 -> [];
-        N -> [ {integer, [ {'$dynamic', fun(V) -> mag(V, N) end} ]}
-             , {float,   [ {'$dynamic', fun(V) -> mag(V, N) end} ]}
+        N -> [ {integer, [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
+             , {float,   [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
              ]
     end.
 
@@ -120,25 +126,13 @@ add(V, {Class, Count, SD, SubSpec}) ->
 %% choose the appropriate subtype based on the filters
 %% in the type hierarchy, or dynamically generate subtype.
 subtype(_V, []) -> untyped;
-subtype(V, [{'$dynamic', SubTypeFun} | _Rest]) ->
-    SubTypeFun(V);
+subtype(V, [{'$dynamic', SubTag, SubFun} | _Rest]) ->
+    {SubTag, SubFun(V)};
 subtype(V, [{SubType, FilterFun} | Rest]) ->
     case FilterFun(V) of
         true  -> SubType;
         false -> subtype(V, Rest)
     end.
-
-%% add(0, Spec) -> add_value(0, Spec);
-%% add(0.0, Spec) -> add_value(0.0, Spec);
-%% add(I, Spec) when is_integer(I) -> add_numeric(integer, I, Spec);
-%% add(F, Spec) when is_float(F) -> add_numeric(float, F, Spec);
-%% add(A, Spec) when is_atom(A) -> add_atom(A, Spec);
-%% add([], Spec) -> add_value([], Spec);
-%% add({}, Spec) -> add_value({}, Spec);
-%% add(L, Spec) when is_list(L) -> add_list(classify_list(L), L, Spec);
-%% add(T, Spec) when is_tuple(T) -> add_tuple(T, Spec);
-%% add(Data, Spec) -> add_value(Data, Spec).
-
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and returns the resulting Spec.
@@ -150,10 +144,21 @@ merge(V, Class, Spec) ->
 
 leaf_data(V, atom, LeafData) ->
     orddict:update_counter(V, 1, LeafData);
+leaf_data(V, {list, _N}, LeafData) ->
+    leaf_data_recur(V, LeafData);
+leaf_data(V, {tuple, _N}, LeafData) ->
+    leaf_data_recur(tuple_to_list(V), LeafData);
 %% Add clauses for various Class to extend LeafData with V
 %% eg. min, max, distrib, zero-count etc. for integers.
 %% The interpretation of this data is class-specific.
 leaf_data(_V, _Class, LeafData) -> LeafData.
+
+%% For lists and tuples, the LeafData stores a list of type specs
+%% for each list/tuple element position.
+leaf_data_recur(V, []) ->
+    lists:map(fun(D) -> new(root, D) end, V);
+leaf_data_recur(V, LeafData) ->
+    lists:map(fun({D, S}) -> add(D, S) end, lists:zip(V, LeafData)).
 
 %% string classifier functions
 is_str_integer(S) -> string_in_ranges(S, [{$0, $9}]).
