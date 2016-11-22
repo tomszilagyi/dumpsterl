@@ -48,7 +48,7 @@ setopts(Opts) -> ds_opts:setopts(Opts).
 %% - dynamic subtypes must be last in the list of subtypes
 
 types() ->
-    [ {root
+    [ {'T'
       , [ {numeric, fun erlang:is_number/1}
         , {atom, fun erlang:is_atom/1}
         , {list, fun erlang:is_list/1}
@@ -85,7 +85,7 @@ optional_types() ->
     end.
 
 %% Initialize a new data spec
-new() -> new(root).
+new() -> new('T').
 
 new(Class) -> {Class, 0, sample_data(), []}.
 
@@ -100,12 +100,12 @@ new(Class, Data) -> add(Data, new(Class)).
 %% When adding a value to the spec:
 %% - each class knows which subtype the data fits in.
 %% Adding a new value is a recursive process:
-%% - starting from the root class, each class
+%% - starting from 'T' (root type) class, each class
 %%   - accounts for the new value itself;
 %%   - chooses appropriate subtype (if any) and
 %%   - passes the value to that subtype.
 %%
-%% Eg. when adding the value 100, 'root' accounts
+%% Eg. when adding the value 100, 'T' accounts
 %% for this (increases counter of values, etc),
 %% determines that it is a numeric type, and so
 %% passes it to 'numeric' which, in turn, determines
@@ -156,7 +156,7 @@ leaf_data(_V, _Class, LeafData) -> LeafData.
 %% For lists and tuples, the LeafData stores a list of type specs
 %% for each list/tuple element position.
 leaf_data_recur(V, []) ->
-    lists:map(fun(D) -> new(root, D) end, V);
+    lists:map(fun(D) -> new('T', D) end, V);
 leaf_data_recur(V, LeafData) ->
     lists:map(fun({D, S}) -> add(D, S) end, lists:zip(V, LeafData)).
 
