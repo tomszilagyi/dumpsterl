@@ -25,20 +25,24 @@ setopts(Opts) -> ds_opts:setopts(Opts).
 %% a hierarchical tree of type classes.
 %% Nodes of this tree are represented as tuples:
 %%
-%% {Class, Count, SampleData, SubSpec | LeafData}
+%% {Class, Data, SubSpec}
 %%
 %% - Class is a term (in most cases an atom) describing
 %%   the type this node represents in the type hierarchy.
 %%   Toplevel type examples: integer, atom, list.
-%% - Count is an integer count of data items covered by
-%%   this type class.
-%% - SampleData contains samples of the data values and
-%%   statistics derived from the data processed.
+%% - Data is node-specific data as a tuple:
+%%
+%%   {Count, SampleData, Priv}
+%%
+%%   - Count is an integer count of data items covered by
+%%     this type class.
+%%   - SampleData contains an even sampling of the data values
+%%   - Priv is private data (specific to the class), holds
+%%     further statistics. For recursive types (lists and tuples)
+%%     it is a list of specs for the individual elements.
 %% - SubSpec is a list of subtype nodes, if any, or [].
-%%   It is up to the handler for Class to know if and how
-%%   to further categorize a piece of data into subtypes.
-%%   For leaf nodes, this holds type-specific leaf data,
-%%   eg. for integers a distribution of values seen.
+%%   It is up to Class to further categorize a piece of data
+%%   into subtypes. For leaf nodes, this is always [].
 
 %% The type hierarchy is defined by types()
 %% - subtypes are mutually exclusive
@@ -96,18 +100,16 @@ opt_strlen_stub(true)  -> [{'$dynamic', len, fun length/1}].
 %% Initialize a new data spec
 new() -> new('T').
 
-new(Class) -> {Class, 0, sample_data(), []}.
+new(Class) -> {Class, {0, sample_data(), []}, []}.
 
 %% Initialize, immediately adding one data term
 new(Class, Data) -> add(Data, new(Class)).
 
-%% Add an instance of Data to Spec.
-%% If Spec already contains Data, do nothing.
-%% Else, extend Spec in the smallest possible way to include Data.
-%% add/2 is written so it can be used as a function to lists:foldl/3.
+%% Add the value V to Spec. add/2 is written so it can be
+%% used as a function to lists:foldl/3.
 %%
-%% When adding a value to the spec:
-%% - each class knows which subtype the data fits in.
+%% When adding a value to the spec, each type class knows
+%  which subtype the data fits in.
 %% Adding a new value is a recursive process:
 %% - starting from 'T' (root type) class, each class
 %%   - accounts for the new value itself;
@@ -123,13 +125,14 @@ new(Class, Data) -> add(Data, new(Class)).
 %% On all levels of the hierarchy, counters will be
 %% increased and samples will be collected.
 
-add(V, {Class, Count, SD, SubSpec}) ->
+add(V, {Class, {Count, SD, PrivData}, SubSpec}) ->
+    Data = {Count+1, sample_data(V, SD), pdata(V, Class, PrivData)},
     case lists:keyfind(Class, 1, types()) of
         false -> %% leaf type
-            {Class, Count+1, sample_data(V, SD), leaf_data(V, Class, SubSpec)};
+            {Class, Data, SubSpec};
         {Class, SubTypes} -> %% abstract type
             SubType = subtype(V, SubTypes),
-            {Class, Count+1, sample_data(V, SD), merge(V, SubType, SubSpec)}
+            {Class, Data, merge(V, SubType, SubSpec)}
     end.
 
 %% choose the appropriate subtype based on the filters
@@ -144,30 +147,39 @@ subtype(V, [{SubType, FilterFun} | Rest]) ->
     end.
 
 %% choose subspec given by Class or create it from scratch,
-%% add V to it and returns the resulting Spec.
+%% add V to it and return the resulting Spec.
 merge(V, Class, Spec) ->
     case lists:keyfind(Class, 1, Spec) of
         false   -> [new(Class, V) | Spec];
         SubSpec -> lists:keystore(Class, 1, Spec, add(V, SubSpec))
     end.
 
-leaf_data(V, atom, LeafData) ->
-    orddict:update_counter(V, 1, LeafData);
-leaf_data(V, {list, _N}, LeafData) ->
-    leaf_data_recur(V, LeafData);
-leaf_data(V, {tuple, _N}, LeafData) ->
-    leaf_data_recur(tuple_to_list(V), LeafData);
-%% Add clauses for various Class to extend LeafData with V
-%% eg. min, max, distrib, zero-count etc. for integers.
-%% The interpretation of this data is class-specific.
-leaf_data(_V, _Class, LeafData) -> LeafData.
+%% class-specific private data
+pdata(V, atom, PD) -> pdata_atom(V, PD);
+pdata(V, {list, _N}, PD) -> pdata_recur(V, PD);
+pdata(V, {tuple, _N}, PD) -> pdata_recur(tuple_to_list(V), PD);
+pdata(V, numeric, PD) -> pdata_numeric(V, PD);
+pdata(V, integer, PD) -> pdata_numeric(V, PD);
+pdata(V, float, PD) -> pdata_numeric(V, PD);
+pdata(V, {mag, _N}, PD) -> pdata_numeric(V, PD);
+pdata(_V, _Class, PrivData) -> PrivData.
 
-%% For lists and tuples, the LeafData stores a list of type specs
-%% for each list/tuple element position.
-leaf_data_recur(V, []) ->
+%% For atoms, maintain a histogram of value occurrence
+pdata_atom(V, PD) ->
+    orddict:update_counter(V, 1, PD).
+
+%% For numeric types, maintain statistics about numbers seen
+pdata_numeric(V, PD0) ->
+    PD1 = orddict:update(min, fun(Min) -> min(V, Min) end, V, PD0),
+    PD2 = orddict:update(max, fun(Max) -> max(V, Max) end, V, PD1),
+    PD2.
+
+%% For lists and tuples, maintain a list of type specs for
+%% each list/tuple element position.
+pdata_recur(V, []) ->
     lists:map(fun(D) -> new('T', D) end, V);
-leaf_data_recur(V, LeafData) ->
-    lists:map(fun({D, S}) -> add(D, S) end, lists:zip(V, LeafData)).
+pdata_recur(V, PrivData) ->
+    lists:map(fun({D, S}) -> add(D, S) end, lists:zip(V, PrivData)).
 
 %% string classifier functions
 is_str_integer(S) -> string_in_ranges(S, [{$0, $9}]).
@@ -249,7 +261,6 @@ drop2_test() ->
 
 sample_data_test() ->
     setopts([{samples, 8}]),
-
     SD10 = sample_data(1),
     ?assertEqual(SD10, sample_data(1, sample_data())),
     SD11 = lists:foldl(fun sample_data/2, SD10, lists:seq(2, 8)),
