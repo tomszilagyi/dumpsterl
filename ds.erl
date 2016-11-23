@@ -65,24 +65,33 @@ types() ->
         ]}
     , {str_printable
       , [ {str_alnum, fun is_str_alnum/1}
-        ]}
+        ] ++ opt_strlen_stub(getopt(strlen)) }
     , {str_alnum
       , [ {str_integer, fun is_str_integer/1}
         , {str_alpha, fun is_str_alpha/1}
-        ]}
+        ] ++ opt_strlen_stub(getopt(strlen)) }
     , {tuple
       , [ {empty, fun(T) -> T =:= {} end}
         , {'$dynamic', tuple, fun size/1}
         ]}
-    ] ++ optional_types().
+    ] ++ opt_mag(getopt(mag))
+      ++ opt_strlen(getopt(strlen)).
 
-optional_types() ->
-    case getopt(mag) of
-        0 -> [];
-        N -> [ {integer, [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
-             , {float,   [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
-             ]
-    end.
+opt_mag(0) -> [];
+opt_mag(N) ->
+    [ {integer, [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
+    , {float,   [ {'$dynamic', mag, fun(V) -> mag(V, N) end} ]}
+    ].
+
+opt_strlen(false) -> [];
+opt_strlen(true) ->
+    [ {str_integer, [ {'$dynamic', len, fun length/1} ]}
+    , {str_alpha,   [ {'$dynamic', len, fun length/1} ]}
+    ].
+
+opt_strlen_stub(false) -> [];
+opt_strlen_stub(true)  -> [{'$dynamic', len, fun length/1}].
+
 
 %% Initialize a new data spec
 new() -> new('T').
