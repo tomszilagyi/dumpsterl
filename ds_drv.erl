@@ -28,6 +28,10 @@
 %%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
 %%     ds_drv:spec_tab(mnesia, kcase, FieldSpecF, inf).
 %%
+%%   data attributes:
+%%     ds_drv:spec_tab(mnesia, kcase, {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
+%%                     inf, [{progress, 10000}, dump]).
+%%
 %%   NB. using a getter fun is slower than a chained reference (list of field numbers),
 %%   so use the fun only where a truly generic accessor is needed. Also, the fun might
 %%   throw an exception in certain cases to exclude those from the spec.
@@ -45,7 +49,7 @@ spec_tab(Type, Tab, FieldSpec, Limit, Opts) ->
 %% {FirstFun, ReadFun, NextFun} where
 %%
 %%   FirstFun(Tab) -> Key
-%%   ReadFun(Tab, Key) -> [Value]
+%%   ReadFun(Tab, Key) -> [Value]  (may return zero or multiple records!)
 %%   NextFun(Tab, Key) -> NextKey | '$end_of_table'
 %%
 accessors(ets) ->
@@ -61,11 +65,12 @@ accessors(mnesia) ->
 
 
 %% Generic backend function for folding through tables
-fold_tab(Fun, Acc0, Type, Tab, FieldSpec, Limit) ->
+fold_tab(Fun, Acc0, Type, Tab, Spec0, Limit) ->
     {FirstF, _ReadF, _NextF} = Accessors = accessors(Type),
     Progress = ds_opts:getopt(progress),
     progress_init_output(Progress),
-    fold_tab(Fun, Acc0, Accessors, Tab, FieldSpec, Limit, Progress, 0, FirstF(Tab)).
+    Spec = normalize_spec(Spec0),
+    fold_tab(Fun, Acc0, Accessors, Tab, Spec, Limit, Progress, 0, FirstF(Tab)).
 
 fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldSpec, 0, Progress, Count, _Key) ->
     progress_final_output(Progress, Count),
@@ -76,19 +81,20 @@ fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldSpec, _Limit, Progress, Count, '$end
     dump_acc(Acc),
     Acc;
 fold_tab(Fun, Acc0, {_FirstF, ReadF, NextF} = Accessors,
-         Tab, FieldSpec, Limit, Progress0, Count, Key) ->
+         Tab, {FieldSpec, AttrSpecs}=ValueSpecs, Limit, Progress0, Count, Key) ->
     Progress = progress_output(Progress0, Acc0, Count+1),
     RecL = ReadF(Tab, Key),
     FoldF = fun(Rec, FoldAcc) ->
-                    %% The element accessor might crash or throw an error
-                    %% to exclude this instance from the spec.
-                    try Field = elem(FieldSpec, Rec),
-                        Fun(Field, FoldAcc)
-                    catch _:_ -> FoldAcc
-                    end
+                %% The element accessor might crash or throw an error
+                %% to exclude this instance from the spec.
+                try Field = elem(FieldSpec, Rec),
+                    Attrs = [{Attr, elem(AttrSpec, Rec)} || {Attr, AttrSpec} <- AttrSpecs],
+                    Fun({Field, Attrs}, FoldAcc)
+                catch _:_ -> FoldAcc
+                end
             end,
     Acc = lists:foldl(FoldF, Acc0, RecL),
-    fold_tab(Fun, Acc, Accessors, Tab, FieldSpec,
+    fold_tab(Fun, Acc, Accessors, Tab, ValueSpecs,
              counter_dec(Limit), Progress, Count+1, NextF(Tab, Key)).
 
 elem(0, Rec) -> Rec;
@@ -96,6 +102,13 @@ elem(F, Rec) when is_integer(F) -> element(F, Rec);
 elem(F, Rec) when is_function(F, 1) -> F(Rec);
 elem([], Rec) -> Rec;
 elem([F|Rest], Rec) -> elem(Rest, elem(F, Rec)).
+
+%% take care of Spec without attributes
+normalize_spec({_FieldSpec,_AttrSpecs} = Spec) -> Spec;
+normalize_spec(Spec) when is_integer(Spec) orelse
+                          is_function(Spec) orelse
+                          is_list(Spec) -> {Spec, []};
+normalize_spec(Spec) -> throw({error, {invalid_spec, Spec}}).
 
 %% output progress information if configured to do so
 progress_output(false, _Acc, _Count) -> false;
