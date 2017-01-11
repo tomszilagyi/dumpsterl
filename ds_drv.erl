@@ -52,6 +52,11 @@ spec_tab(Type, Tab, FieldSpec, Limit, Opts) ->
 %%   ReadFun(Tab, Key) -> [Value]  (may return zero or multiple records!)
 %%   NextFun(Tab, Key) -> NextKey | '$end_of_table'
 %%
+accessors(dets) ->
+    { fun dets:first/1
+    , fun dets:lookup/2
+    , fun dets:next/2
+    };
 accessors(ets) ->
     { fun ets:first/1
     , fun ets:lookup/2
