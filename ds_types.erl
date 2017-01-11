@@ -25,6 +25,7 @@ types() ->
         , {atom, fun erlang:is_atom/1}
         , {list, fun erlang:is_list/1}
         , {tuple, fun erlang:is_tuple/1}
+        , {binary, fun erlang:is_binary/1}
         ]}
     , {numeric
       , [ {integer, fun erlang:is_integer/1}
@@ -35,6 +36,11 @@ types() ->
         , {str_printable, fun is_str_printable/1}
         , {'$dynamic', list, fun length/1}
         ]}
+    , {tuple
+      , [ {empty, fun(T) -> T =:= {} end}
+        , {'$dynamic', record, fun dyn_record/1}
+        , {'$dynamic', tuple, fun size/1}
+        ]}
     , {str_printable
       , [ {str_alnum, fun is_str_alnum/1}
         ] ++ opt_strlen_stub(getopt(strlen)) }
@@ -42,11 +48,6 @@ types() ->
       , [ {str_integer, fun is_str_integer/1}
         , {str_alpha, fun is_str_alpha/1}
         ] ++ opt_strlen_stub(getopt(strlen)) }
-    , {tuple
-      , [ {empty, fun(T) -> T =:= {} end}
-        , {'$dynamic', record, fun dyn_record/1}
-        , {'$dynamic', tuple, fun size/1}
-        ]}
     ] ++ opt_mag(getopt(mag))
       ++ opt_strlen(getopt(strlen)).
 
