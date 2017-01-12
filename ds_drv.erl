@@ -2,9 +2,15 @@
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ fold_tab/6
-        , spec_tab/4
+-export([ %% ets, dets, mnesia
+          spec_tab/4
         , spec_tab/5
+        , fold_tab/6
+
+          %% disk_log
+        , spec_disk_log/3
+        , spec_disk_log/4
+        , fold_disk_log/5
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -44,6 +50,52 @@ spec_tab(Type, Tab, FieldSpec, Limit, Opts) ->
     fold_tab(fun ds:add/2, ds:new(), Type, Tab, FieldSpec, Limit).
 
 
+%% Spec a disk_log; works similar to spec_tab.
+
+spec_disk_log(Filename, FieldSpec, Limit) ->
+    fold_disk_log(fun ds:add/2, ds:new(), Filename, FieldSpec, Limit).
+
+spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
+    ds_opts:setopts(Opts),
+    fold_disk_log(fun ds:add/2, ds:new(), Filename, FieldSpec, Limit).
+
+
+%% Backend function for folding through disk_log files
+%% Useful for Mnesia .DCD and .DCL
+fold_disk_log(Fun, Acc0, Filename, Spec0, Limit) ->
+    {ok, dlog} = disk_log:open([ {name, dlog}
+                               , {file, Filename}
+                               , {mode, read_only}
+                               , {repair, false}
+                               ]),
+    Progress = progress_new(),
+    progress_init_output(Progress),
+    Spec = normalize_spec(Spec0),
+    fold_disk_log(Fun, Acc0, Spec, Limit, Progress, start).
+
+fold_disk_log(_Fun, Acc, _Spec, 0, Progress, _Cont) ->
+    progress_final_output(Progress),
+    dump_acc(Acc),
+    ok = disk_log:close(dlog),
+    Acc;
+fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont0) ->
+    case disk_log:chunk(dlog, Cont0) of
+        {Cont, RecL} ->
+            RecN = length(RecL),
+            Progress = progress_update(Progress0, Acc0, RecN),
+            Acc = fold_kernel(Fun, Acc0, RecL, Spec),
+            fold_disk_log(Fun, Acc, Spec, counter_dec(Limit, RecN), Progress, Cont);
+        {Cont, RecL, BadBytes} ->
+            io:format("disk_log: skipped ~B bad bytes~n", [BadBytes]),
+            RecN = length(RecL),
+            Progress = progress_update(Progress0, Acc0, RecN),
+            Acc = fold_kernel(Fun, Acc0, RecL, Spec),
+            fold_disk_log(Fun, Acc, Spec, counter_dec(Limit, RecN), Progress, Cont);
+        eof -> %% trigger end clause by setting Limit to 0
+            fold_disk_log(Fun, Acc0, Spec, 0, Progress0, undefined)
+    end.
+
+
 %% tuple of accessor funs to iterate tables:
 %%
 %% {FirstFun, ReadFun, NextFun} where
@@ -68,39 +120,44 @@ accessors(mnesia) ->
     , fun mnesia:dirty_next/2
     }.
 
-
-%% Generic backend function for folding through tables
+%% Generic backend function for folding through tables via accessors
 fold_tab(Fun, Acc0, Type, Tab, Spec0, Limit) ->
     {FirstF, _ReadF, _NextF} = Accessors = accessors(Type),
-    Progress = ds_opts:getopt(progress),
+    Progress = progress_new(),
     progress_init_output(Progress),
     Spec = normalize_spec(Spec0),
-    fold_tab(Fun, Acc0, Accessors, Tab, Spec, Limit, Progress, 0, FirstF(Tab)).
+    fold_tab(Fun, Acc0, Accessors, Tab, Spec, Limit, Progress, FirstF(Tab)).
 
-fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldSpec, 0, Progress, Count, _Key) ->
-    progress_final_output(Progress, Count),
+fold_tab(_Fun, Acc, _Accessors, _Tab, _Spec, 0, Progress, _Key) ->
+    progress_final_output(Progress),
     dump_acc(Acc),
     Acc;
-fold_tab(_Fun, Acc, _Accessors, _Tab, _FieldSpec, _Limit, Progress, Count, '$end_of_table') ->
-    progress_final_output(Progress, Count),
+fold_tab(_Fun, Acc, _Accessors, _Tab, _Spec, _Limit, Progress, '$end_of_table') ->
+    progress_final_output(Progress),
     dump_acc(Acc),
     Acc;
 fold_tab(Fun, Acc0, {_FirstF, ReadF, NextF} = Accessors,
-         Tab, {FieldSpec, AttrSpecs}=ValueSpecs, Limit, Progress0, Count, Key) ->
-    Progress = progress_output(Progress0, Acc0, Count+1),
+         Tab, Spec, Limit, Progress0, Key) ->
     RecL = ReadF(Tab, Key),
-    FoldF = fun(Rec, FoldAcc) ->
-                %% The element accessor might crash or throw an error
-                %% to exclude this instance from the spec.
-                try Field = elem(FieldSpec, Rec),
-                    Attrs = [{Attr, elem(AttrSpec, Rec)} || {Attr, AttrSpec} <- AttrSpecs],
-                    Fun({Field, Attrs}, FoldAcc)
-                catch _:_ -> FoldAcc
-                end
-            end,
-    Acc = lists:foldl(FoldF, Acc0, RecL),
-    fold_tab(Fun, Acc, Accessors, Tab, ValueSpecs,
-             counter_dec(Limit), Progress, Count+1, NextF(Tab, Key)).
+    RecN = length(RecL),
+    Progress = progress_update(Progress0, Acc0, RecN),
+    Acc = fold_kernel(Fun, Acc0, RecL, Spec),
+    fold_tab(Fun, Acc, Accessors, Tab, Spec,
+             counter_dec(Limit, RecN), Progress, NextF(Tab, Key)).
+
+%% The kernel for folding a list of records into the accumulated spec
+fold_kernel(Fun, Acc0, RecL, {FieldSpec, AttrSpecs}) ->
+    FoldF =
+        fun(Rec, FoldAcc) ->
+            %% The element accessor might crash or throw an error
+            %% to exclude this instance from the spec.
+            try Field = elem(FieldSpec, Rec),
+                 Attrs = [{Attr, elem(AttrSpec, Rec)} || {Attr, AttrSpec} <- AttrSpecs],
+                 Fun({Field, Attrs}, FoldAcc)
+            catch _:_ -> FoldAcc
+            end
+        end,
+    lists:foldl(FoldF, Acc0, RecL).
 
 elem(0, Rec) -> Rec;
 elem(F, Rec) when is_integer(F) -> element(F, Rec);
@@ -115,23 +172,48 @@ normalize_spec(Spec) when is_integer(Spec) orelse
                           is_list(Spec) -> {Spec, []};
 normalize_spec(Spec) -> throw({error, {invalid_spec, Spec}}).
 
+%% Progress output and dump
+-record(progress, { major = 50       % one major tick = this many minor ticks
+                  , minor            % integer | false (disable output)
+                  , count_recv  = 0  % count of received items
+                  , count_minor = 0  % number of minor ticks so far
+                  , count_major = 0  % number of major ticks so far
+                  }).
+
+progress_new() -> #progress{minor=ds_opts:getopt(progress)}.
+
 %% output progress information if configured to do so
-progress_output(false, _Acc, _Count) -> false;
-progress_output(1, Acc, Count) ->
-    Progress = ds_opts:getopt(progress),
-    case Count div Progress rem 50 of
-        0 -> io:format("~B", [Count]);
-        _ -> io:put_chars(".")
+progress_update(#progress{minor=false}=P, _Acc, _Incr) -> P;
+progress_update(#progress{major=Major, minor=Minor,
+                          count_minor=CMi0, count_major=CMa0,
+                          count_recv=Count0}=P,
+                Acc, Incr) ->
+
+    %% minor ticks
+    Count = Count0 + Incr,
+    CMi = Count div Minor,
+    NewTicks = CMi - CMi0,
+    emit_ticks(NewTicks, Acc),
+
+    %% major ticks
+    CMa = CMi div Major,
+    if CMa > CMa0 -> io:format("~B", [Count]);
+       true -> ok
     end,
-    dump_acc(Acc),
-    Progress;
-progress_output(Progress, _Acc, _Count) -> counter_dec(Progress).
 
-progress_init_output(false)    -> false;
-progress_init_output(Progress) -> io:format("progress (every ~B): ", [Progress]).
+    P#progress{count_recv=Count, count_minor=CMi, count_major=CMa}.
 
-progress_final_output(false, _Count) -> false;
-progress_final_output(_Prog, Count)  -> io:format("~nprocessed: ~B~n~n", [Count]).
+emit_ticks(0,_Acc) -> ok;
+emit_ticks(N, Acc) -> dump_acc(Acc),
+                      io:put_chars(string:chars($., N)).
+
+progress_init_output(#progress{minor=false}) -> false;
+progress_init_output(#progress{minor=Minor}) ->
+    io:format("progress (every ~B): ", [Minor]).
+
+progress_final_output(#progress{minor=false}) -> false;
+progress_final_output(#progress{count_recv=Count}) ->
+    io:format("~nprocessed: ~B~n~n", [Count]).
 
 %% dump the accumulated spec if dataspec is configured to do dumps
 dump_acc(Acc) ->
@@ -141,8 +223,8 @@ dump_acc(Acc) ->
     end.
 
 %% decrement counters that might be disabled by being set to an atom
-counter_dec(N) when is_integer(N) -> N-1;
-counter_dec(A)                    -> A.
+counter_dec(N, C) when is_integer(N) -> max(0, N-C);
+counter_dec(A,_C)                    -> A.
 
 
 %% Tests
