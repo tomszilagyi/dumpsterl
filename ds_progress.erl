@@ -3,6 +3,7 @@
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 -export([ init/0
+        , get_count/1
         , update/3
         , final/2
         ]).
@@ -20,6 +21,8 @@ init() ->
     Minor = ds_opts:getopt(progress),
     io:format("progress (every ~B): ", [Minor]),
     #progress{minor=Minor, start_ts=os:timestamp()}.
+
+get_count(#progress{count_recv=Count}) -> Count.
 
 %% output progress information if configured to do so
 update(#progress{minor=false}=P, _Acc, _Incr) -> P;

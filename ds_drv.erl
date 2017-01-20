@@ -77,21 +77,30 @@ fold_disk_log(_Fun, Acc, _Spec, 0, Progress, _Cont) ->
     ds_progress:final(Progress, Acc);
 fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont0) ->
     case disk_log:chunk(dlog, Cont0) of
+        eof -> %% trigger end clause by setting Limit to 0
+            fold_disk_log(Fun, Acc0, Spec, 0, Progress0, undefined);
+        {error, Reason} ->
+            io:format("disk_log: chunk failed: ~p~n", [Reason]),
+            %% trigger end clause by setting Limit to 0
+            fold_disk_log(Fun, Acc0, Spec, 0, Progress0, undefined);
         {Cont, RecL} ->
-            RecN = length(RecL),
-            Progress = ds_progress:update(Progress0, Acc0, RecN),
-            Acc = fold_kernel(Fun, Acc0, RecL, Spec),
-            fold_disk_log(Fun, Acc, Spec, counter_dec(Limit, RecN), Progress, Cont);
+            do_fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont, RecL);
         {Cont, RecL, BadBytes} ->
             io:format("disk_log: skipped ~B bad bytes~n", [BadBytes]),
+            do_fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont, RecL)
+    end.
+
+do_fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont, RecL) ->
+    case {ds_progress:get_count(Progress0), RecL} of
+        %% ignore log_header entry at the start
+        {0, [{log_header, dcd_log, _, _, _, _}|RestRecL]} ->
+            do_fold_disk_log(Fun, Acc0, Spec, Limit, Progress0, Cont, RestRecL);
+        _ ->
             RecN = length(RecL),
             Progress = ds_progress:update(Progress0, Acc0, RecN),
             Acc = fold_kernel(Fun, Acc0, RecL, Spec),
-            fold_disk_log(Fun, Acc, Spec, counter_dec(Limit, RecN), Progress, Cont);
-        eof -> %% trigger end clause by setting Limit to 0
-            fold_disk_log(Fun, Acc0, Spec, 0, Progress0, undefined)
+            fold_disk_log(Fun, Acc, Spec, counter_dec(Limit, RecN), Progress, Cont)
     end.
-
 
 %% tuple of accessor funs to iterate tables:
 %%
