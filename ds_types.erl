@@ -83,7 +83,7 @@ dyn_record(_V) -> false.
 is_str_integer(S) -> string_in_ranges(S, [{$0, $9}]).
 is_str_alpha(S) -> string_in_ranges(S, [{$A, $Z}, {$a, $z}]).
 is_str_alnum(S) -> string_in_ranges(S, [{$0, $9}, {$A, $Z}, {$a, $z}]).
-is_str_printable(S) -> string_in_ranges(S, [{32, 127}]).
+is_str_printable(S) -> string_in_ranges(S, [{32, 126}, {160, 255}]).
 
 %% check that string consists of chars that fit in the given ranges
 string_in_ranges([],_Ranges)   -> true;
