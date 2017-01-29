@@ -26,9 +26,46 @@ user-friendly framework for data exploration in NoSQL environments.
 - cut intermediary stages of the hierarchy, e.g. if they are all
   integers, get rid of 'T' and 'numeric'. Formally, all nodes with
   only one child should be removed and replaced by the child.
+- 'decision tree compiler' for quick computation of values' subtypes
 - more efficient in-memory representation of tree, for faster updates
   (store all nodes in a flat ets table keyed by class, since they are
   unique; updating a node does not involve rebuilding the whole data
   structure)
 - account each data term only in leaf node, and when assembling the
   tree, derive parent nodes based on the union of children...
+- parallelize: send data to N trees in round-robin fashion, merge
+  results regularly for each chunk or at the end
+  (N > number of processors)
+- read schema.DAT to learn about record fields
+
+** GUI browser concept
+- two panes: left for navigation, right for details
+- navigation pane:
+  - type hierarchy stack
+    see where the view is located; clicking on any parent
+    jumps up to that level
+    eg. T -> tuple -> {record, {kcase, 21}}
+  - subtype list
+    shows the list of subspecs below the currently selected one;
+    clicking on any of them navigates the view down to that level
+
+    in case of complex structures, which are recursive via their
+    private data, this shows a list of these specs, allowing the
+    user to click on one of them. The view is then directed to the
+    toplevel spec of that element, as a further level down the
+    hierarchy.
+    eg. T -> tuple -> {record, {kcase, 21}} -> element(2) or #kcase.cid
+
+    the transitions may be distinguished by coloring the entry
+    in the type hierarchy stack, e.g.
+      subtype: light grey;
+      field / element / item: light orange
+
+- details pane:
+  - statistics visualization panel
+  - private data visualization panel
+
+- statistics and private data should expose accessors so the
+  gui can be displayed on a modular basis (i.e. knowledge of the
+  data structure, and how to display it, should reside in the
+  statistics or private data module; gui code should remain generic).

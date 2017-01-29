@@ -80,17 +80,12 @@ new(Class, Data) -> add(Data, new(Class)).
 %% piece of data satisfies certain criteria to be 'interesting'.
 %% This attribute would ensure that the data is kept stored
 %% regardless of sampling allowances.
-add(V, {Class, Data0, SubSpec}) ->
-    case lists:keyfind(Class, 1, ds_types:types()) of
-        false -> %% leaf type
-            {Class, update_data(V, Class, Data0), SubSpec};
-        {Class, SubTypes} -> %% abstract type
-            case subtype(V, SubTypes) of
-                '$null' -> %% no subtype -- treat it as a leaf type
-                    {Class, update_data(V, Class, Data0), SubSpec};
-                SubType -> %% merge data into subtype spec
-                    {Class, Data0, merge(V, SubType, SubSpec)}
-            end
+add({V,_A}=VA, {Class, Data0, SubSpec}) ->
+    case ds_types:subtype(V, Class) of
+        '$null' -> %% leaf type
+            {Class, update_data(VA, Class, Data0), SubSpec};
+        SubType -> %% merge data into subtype spec
+            {Class, Data0, merge(VA, SubType, SubSpec)}
     end.
 
 update_data(V, Class, {StatsData, PrivData}) ->
