@@ -80,20 +80,26 @@ new(Class, Data) -> add(Data, new(Class)).
 %% piece of data satisfies certain criteria to be 'interesting'.
 %% This attribute would ensure that the data is kept stored
 %% regardless of sampling allowances.
-add(V, {Class, {StatsData, PrivData}, SubSpec}) ->
-    Data = {ds_stats:stats_data(V, StatsData),
-            ds_types:priv_data(V, Class, PrivData)},
+add(V, {Class, Data0, SubSpec}) ->
     case lists:keyfind(Class, 1, ds_types:types()) of
         false -> %% leaf type
-            {Class, Data, SubSpec};
+            {Class, update_data(V, Class, Data0), SubSpec};
         {Class, SubTypes} -> %% abstract type
-            SubType = subtype(V, SubTypes),
-            {Class, Data, merge(V, SubType, SubSpec)}
+            case subtype(V, SubTypes) of
+                '$null' -> %% no subtype -- treat it as a leaf type
+                    {Class, update_data(V, Class, Data0), SubSpec};
+                SubType -> %% merge data into subtype spec
+                    {Class, Data0, merge(V, SubType, SubSpec)}
+            end
     end.
+
+update_data(V, Class, {StatsData, PrivData}) ->
+    {ds_stats:stats_data(V, StatsData),
+     ds_types:priv_data(V, Class, PrivData)}.
 
 %% choose the appropriate subtype based on the filters
 %% in the type hierarchy, or dynamically generate subtype.
-subtype(_V, []) -> untyped;
+subtype(_V, []) -> '$null';
 subtype({V, A}, [{'$dynamic', SubTag, SubFun} | Rest]) ->
     case SubFun(V) of
         false -> subtype({V, A}, Rest);

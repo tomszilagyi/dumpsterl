@@ -9,10 +9,26 @@ user-friendly framework for data exploration in NoSQL environments.
 - allow dynamic subtypes to have further subtypes
   ie. allow types() to contain something like:
     { {tuple, '_'}, ... } %% subtypes for any (concrete) size tuple
+
 ** standard and pluggable spec format
 - also for programmatic report creation
+
 ** advanced features for data mining
 - sampling
 - tag each data with arbitrary attributes
   - timestamp (when was this data created)
   - key (to read back the whole record)
+
+** ideas for development
+- add complex types to the type hierarchy, eg.
+  - {list_of, T} dynamic type where a list has elements of the same type
+  - commonly used complex types e.g. proplist
+- cut intermediary stages of the hierarchy, e.g. if they are all
+  integers, get rid of 'T' and 'numeric'. Formally, all nodes with
+  only one child should be removed and replaced by the child.
+- more efficient in-memory representation of tree, for faster updates
+  (store all nodes in a flat ets table keyed by class, since they are
+  unique; updating a node does not involve rebuilding the whole data
+  structure)
+- account each data term only in leaf node, and when assembling the
+  tree, derive parent nodes based on the union of children...
