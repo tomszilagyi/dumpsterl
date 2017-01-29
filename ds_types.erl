@@ -185,8 +185,8 @@ mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 %% class-specific initializer
 priv_data(_Class) -> [].
 
-priv_data(V, atom, PD) -> priv_data_atom(V, PD);
-priv_data(V, {list,_N}, PD) -> priv_data_recur(V, PD);
+priv_data(VA, atom, PD) -> priv_data_atom(VA, PD);
+priv_data(VA, {list,_N}, PD) -> priv_data_recur(VA, PD);
 priv_data({V, Attrs}, {tuple,_N}, PD) ->
     priv_data_recur({tuple_to_list(V), Attrs}, PD);
 priv_data({V, Attrs}, {record,{_RecName,_Size}}, PD) ->

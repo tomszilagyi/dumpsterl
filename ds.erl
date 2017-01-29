@@ -88,28 +88,28 @@ add({V,_A}=VA, {Class, Data0, SubSpec}) ->
             {Class, Data0, merge(VA, SubType, SubSpec)}
     end.
 
-update_data(V, Class, {StatsData, PrivData}) ->
-    {ds_stats:stats_data(V, StatsData),
-     ds_types:priv_data(V, Class, PrivData)}.
+update_data(VA, Class, {StatsData, PrivData}) ->
+    {ds_stats:stats_data(VA, StatsData),
+     ds_types:priv_data(VA, Class, PrivData)}.
 
 %% choose the appropriate subtype based on the filters
 %% in the type hierarchy, or dynamically generate subtype.
-subtype(_V, []) -> '$null';
-subtype({V, A}, [{'$dynamic', SubTag, SubFun} | Rest]) ->
+subtype(_VA, []) -> '$null';
+subtype({V,_A}=VA, [{'$dynamic', SubTag, SubFun} | Rest]) ->
     case SubFun(V) of
-        false -> subtype({V, A}, Rest);
+        false -> subtype(VA, Rest);
         Data  -> {SubTag, Data}
     end;
-subtype({V, A}, [{SubType, FilterFun} | Rest]) ->
+subtype({V,_A}=VA, [{SubType, FilterFun} | Rest]) ->
     case FilterFun(V) of
-        false -> subtype({V, A}, Rest);
+        false -> subtype(VA, Rest);
         true  -> SubType
     end.
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and return the resulting Spec.
-merge(V, Class, Spec) ->
+merge(VA, Class, Spec) ->
     case lists:keyfind(Class, 1, Spec) of
-        false   -> [new(Class, V) | Spec];
-        SubSpec -> lists:keystore(Class, 1, Spec, add(V, SubSpec))
+        false   -> [new(Class, VA) | Spec];
+        SubSpec -> lists:keystore(Class, 1, Spec, add(VA, SubSpec))
     end.
