@@ -12,11 +12,19 @@
 
 -include_lib("wx/include/wx.hrl").
 
+-define(LIST_CTRL_STACK,    10).
+-define(LIST_CTRL_CHILDREN, 20).
+
 -record(state,
         {
           config,
           frame,
-          panel
+          panel,
+          lc_stack,
+          lc_children,
+          text_stats,
+          text_priv,
+          zipper
         }).
 
 start_link() ->
@@ -31,6 +39,8 @@ init(Config) ->
     wx:batch(fun() -> do_init(Config) end).
 
 do_init([Server] = Config) ->
+    Zipper = load_zipper("dataspec.bin"),
+
     Frame = wxFrame:new(Server, ?wxID_ANY, "Dataspec", []),
     Panel = wxPanel:new(Frame, []),
     Sizer = wxBoxSizer:new(?wxVERTICAL),
@@ -51,20 +61,13 @@ do_init([Server] = Config) ->
     Text1 = wxStaticText:new(TopLeftPanel, ?wxID_ANY, "Type hierarchy stack", []),
     wxSizer:add(TopLeftSizer, Text1, []),
 
-    LC1 = wxListCtrl:new(TopLeftPanel, [{style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
-    wxSizer:add(TopLeftSizer, LC1, SizerOpts),
-    wxListCtrl:insertColumn(LC1, 0, "Type", []),
-    wxListCtrl:insertColumn(LC1, 1, "Count", []),
-    wxListCtrl:insertItem(LC1, 0, ""),
-    wxListCtrl:setItem(LC1, 0, 0, "T"),
-    wxListCtrl:setItem(LC1, 0, 1, "123,456"),
-    wxListCtrl:insertItem(LC1, 1, ""),
-    wxListCtrl:setItem(LC1, 1, 0, "tuple"),
-    wxListCtrl:setItem(LC1, 1, 1, "123,456"),
-    wxListCtrl:insertItem(LC1, 2, ""),
-    wxListCtrl:setItem(LC1, 2, 0, "{record, {kcase, 21}}"),
-    wxListCtrl:setItem(LC1, 2, 1, "123,456"),
-    wxListCtrl:connect(LC1, command_list_item_selected, []),
+    LC_Stack = wxListCtrl:new(TopLeftPanel,
+                              [{winid, ?LIST_CTRL_STACK},
+                               {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
+    wxSizer:add(TopLeftSizer, LC_Stack, SizerOpts),
+    wxListCtrl:insertColumn(LC_Stack, 0, "Type", []),
+    wxListCtrl:insertColumn(LC_Stack, 1, "Count", []),
+    wxListCtrl:connect(LC_Stack, command_list_item_selected, []),
 
     BottomLeftPanel = wxPanel:new(LeftSplitter, []),
     BottomLeftSizer = wxBoxSizer:new(?wxVERTICAL),
@@ -73,14 +76,13 @@ do_init([Server] = Config) ->
     Text2 = wxStaticText:new(BottomLeftPanel, ?wxID_ANY, "Subtype or element list", []),
     wxSizer:add(BottomLeftSizer, Text2, []),
 
-    LC2 = wxListCtrl:new(BottomLeftPanel, [{style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
-    wxSizer:add(BottomLeftSizer, LC2, SizerOpts),
-    wxListCtrl:insertColumn(LC2, 0, "Type", []),
-    wxListCtrl:insertColumn(LC2, 1, "Count", []),
-    wxListCtrl:insertItem(LC2, 0, ""),
-    wxListCtrl:setItem(LC2, 0, 0, "T"),
-    wxListCtrl:setItem(LC2, 0, 1, "123,456"),
-    wxListCtrl:connect(LC2, command_list_item_selected, []),
+    LC_Children = wxListCtrl:new(BottomLeftPanel,
+                                 [{winid, ?LIST_CTRL_CHILDREN},
+                                  {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
+    wxSizer:add(BottomLeftSizer, LC_Children, SizerOpts),
+    wxListCtrl:insertColumn(LC_Children, 0, "Type", []),
+    wxListCtrl:insertColumn(LC_Children, 1, "Count", []),
+    wxListCtrl:connect(LC_Children, command_list_item_selected, []),
 
     wxSplitterWindow:splitHorizontally(LeftSplitter, TopLeftPanel, BottomLeftPanel),
     wxSplitterWindow:setSashGravity(LeftSplitter, 0.5),
@@ -94,10 +96,16 @@ do_init([Server] = Config) ->
     wxPanel:setSizer(RightPanel, RightSizer),
 
     TopRightPanel = wxPanel:new(RightSplitter, []),
-    wxStaticText:new(TopRightPanel, ?wxID_ANY, "Statistics visualization", []),
+    TopRightSizer = wxBoxSizer:new(?wxVERTICAL),
+    wxPanel:setSizer(TopRightPanel, TopRightSizer),
+    TextStats = wxStaticText:new(TopRightPanel, ?wxID_ANY, "Statistics", []),
+    wxSizer:add(TopRightSizer, TextStats, []),
 
     BottomRightPanel = wxPanel:new(RightSplitter, []),
-    wxStaticText:new(BottomRightPanel, ?wxID_ANY, "Private data visualization", []),
+    BottomRightSizer = wxBoxSizer:new(?wxVERTICAL),
+    wxPanel:setSizer(BottomRightPanel, BottomRightSizer),
+    TextPriv = wxStaticText:new(BottomRightPanel, ?wxID_ANY, "Private data", []),
+    wxSizer:add(BottomRightSizer, TextPriv, []),
 
     wxSplitterWindow:splitHorizontally(RightSplitter, TopRightPanel, BottomRightPanel),
     wxSplitterWindow:setSashGravity(RightSplitter, 0.5),
@@ -111,15 +119,27 @@ do_init([Server] = Config) ->
     wxSizer:add(Sizer, Splitter, SizerOpts),
 
     wxFrame:show(Frame),
-    {Frame, #state{config=Config, frame=Frame, panel=Panel}}.
+    State = #state{config=Config, frame=Frame, panel=Panel,
+                   lc_stack=LC_Stack, lc_children=LC_Children,
+                   text_stats=TextStats, text_priv=TextPriv,
+                   zipper=Zipper},
+    {Frame, update_gui(State)}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Async Events are handled in handle_event as in handle_info
-handle_event(#wx{obj = _ListCtrl,
+handle_event(#wx{id = ?LIST_CTRL_STACK, obj = LC,
                  event = #wxList{itemIndex = Item}},
-             State = #state{}) ->
-    io:format("Item ~p selected.~n", [Item]),
-    {noreply,State};
+             State0 = #state{zipper=Zipper0}) ->
+    FramesUp = wxListCtrl:getItemCount(LC) - Item - 1,
+    Zipper = ds_zipper:nth_parent(Zipper0, FramesUp),
+    State = State0#state{zipper=Zipper},
+    {noreply, update_gui(State)};
+handle_event(#wx{id = ?LIST_CTRL_CHILDREN,
+                 event = #wxList{itemIndex = Item}},
+             State0 = #state{zipper=Zipper0}) ->
+    Zipper = ds_zipper:nth_child(Zipper0, Item),
+    State = State0#state{zipper=Zipper},
+    {noreply, update_gui(State)};
 
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
@@ -150,3 +170,30 @@ terminate(_Reason, _State) ->
 %% Local functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
+                  text_stats=TextStats, text_priv=TextPriv,
+                  zipper=Zipper} = State) ->
+    wxListCtrl:deleteAllItems(LC_Stack),
+    add_stack(LC_Stack, ds_zipper:stack(Zipper), 0),
+    wxListCtrl:deleteAllItems(LC_Children),
+    add_stack(LC_Children, ds_zipper:child_list(Zipper), 0),
+    {Stats, Priv} = ds_zipper:data(Zipper),
+    StatsStr = io_lib:format("~p", [Stats]),
+    PrivStr = io_lib:format("~p", [Priv]),
+    wxStaticText:setLabel(TextStats, StatsStr),
+    wxStaticText:setLabel(TextPriv, PrivStr),
+    State.
+
+%% populate ListCtrl with stack
+add_stack(_LC, [], N) -> N;
+add_stack(LC, [Type|Rest], N) ->
+    TypeStr = io_lib:format("~p", [Type]),
+    wxListCtrl:insertItem(LC, N, ""),
+    wxListCtrl:setItem(LC, N, 0, TypeStr),
+    wxListCtrl:setItem(LC, N, 1, "123,456"),
+    add_stack(LC, Rest, N+1).
+
+load_zipper(Filename) ->
+    {ok, Bin} = file:read_file(Filename),
+    Tree = binary_to_term(Bin),
+    ds_zipper:from_tree(Tree).
