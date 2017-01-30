@@ -189,7 +189,7 @@ dyn_record(_V) -> false.
 is_str_integer(S) -> string_in_ranges(S, [{$0, $9}]).
 is_str_alpha(S) -> string_in_ranges(S, [{$A, $Z}, {$a, $z}]).
 is_str_alnum(S) -> string_in_ranges(S, [{$0, $9}, {$A, $Z}, {$a, $z}]).
-is_str_printable(S) -> string_in_ranges(S, [{32, 126}, {160, 255}]).
+is_str_printable(S) -> string_in_ranges(S, [$\r, $\n, $\t, {32, 126}, {160, 255}]).
 
 %% check that string consists of chars that fit in the given ranges
 string_in_ranges([],_Ranges)   -> true;
@@ -199,10 +199,12 @@ string_in_ranges([C|L], Ranges) ->
         true  -> string_in_ranges(L, Ranges)
     end.
 
-%% check that char C is in one of the ranges spec'd as [{Min, Max}].
+%% check that char C is in one of the ranges spec'd as [{Min, Max}|Char].
 char_in_ranges(_C, []) -> false;
 char_in_ranges(C, [{Min, Max} | _]) when C >= Min, C =< Max -> true;
-char_in_ranges(C, [{_Min,_Max} | Rest]) -> char_in_ranges(C, Rest).
+char_in_ranges(C, [{_Min,_Max} | Rest]) -> char_in_ranges(C, Rest);
+char_in_ranges(C, [C | _]) -> true;
+char_in_ranges(C, [_Char | Rest]) -> char_in_ranges(C, Rest).
 
 %% order of magnitude for integers and floats
 mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
@@ -229,5 +231,7 @@ priv_data_atom({V, Attrs}, PD) ->
 char_in_ranges_test() ->
     ?assertNot(char_in_ranges($A, [])),
     ?assertNot(char_in_ranges($A, [{$a, $z}])),
+    ?assertNot(char_in_ranges($\n, [{$a, $z}])),
+    ?assert(char_in_ranges($\n, [{$a, $z}, $\n])),
     ?assert(char_in_ranges($A, [{$A, $Z}])),
     ?assert(char_in_ranges($A, [{$A, $Z}, {$a, $z}])).
