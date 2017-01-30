@@ -37,10 +37,11 @@
 %%   - Priv is private data (specific to the class), holds
 %%     further statistics. For recursive types (lists and tuples)
 %%     it is a list of specs for the individual elements.
-%% - SubSpec is a list of subtype nodes, if any, or [].
-%%   It is up to Class to further categorize a piece of data
-%%   into subtypes. For leaf nodes, this is always [].
-
+%% - SubSpec is a list of child nodes. Depending on the kind of type
+%%   denoted by Class, this may be a list of subtypes or in case of
+%%   compound types, a list of specs corresponding to the elements
+%%   or fields of this type. The exact semantics of SubSpec are left
+%%   up to Class, but the tree is uniformly recursive through SubSpecs.
 
 %% Initialize a new data spec
 new() -> new('T').
@@ -80,18 +81,21 @@ new(Class, Data) -> add(Data, new(Class)).
 %% piece of data satisfies certain criteria to be 'interesting'.
 %% This attribute would ensure that the data is kept stored
 %% regardless of sampling allowances.
-add({V,_A}=VA, {Class, Data0, SubSpec}) ->
+add({V, A}=VA, {Class, Data0, SubSpec}) ->
     case ds_types:subtype(V, Class) of
         '$null' -> %% leaf type
-            {Class, update_data(VA, Class, Data0), SubSpec};
+            {Class, update(VA, Class, Data0), SubSpec};
+        {'$elements', Items} -> %% compound type with sub-elements
+            {Class, update(VA, Class, Data0), recur({Items, A}, SubSpec)};
         SubType -> %% merge data into subtype spec
             {Class, Data0, merge(VA, SubType, SubSpec)}
     end.
 
-update_data(VA, Class, {StatsData, PrivData}) ->
+update(VA, Class, {StatsData, PrivData}) ->
     {ds_stats:stats_data(VA, StatsData),
      ds_types:priv_data(VA, Class, PrivData)}.
 
+-ifdef(discarded).
 %% choose the appropriate subtype based on the filters
 %% in the type hierarchy, or dynamically generate subtype.
 subtype(_VA, []) -> '$null';
@@ -105,6 +109,7 @@ subtype({V,_A}=VA, [{SubType, FilterFun} | Rest]) ->
         false -> subtype(VA, Rest);
         true  -> SubType
     end.
+-endif.
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and return the resulting Spec.
@@ -113,3 +118,9 @@ merge(VA, Class, Spec) ->
         false   -> [new(Class, VA) | Spec];
         SubSpec -> lists:keystore(Class, 1, Spec, add(VA, SubSpec))
     end.
+
+%% recurse on the per-element sub-specs of compound types
+recur({Vs, A}, []) ->
+    lists:map(fun(V) -> ds:new('T', {V, A}) end, Vs);
+recur({Vs, A}, SubSpec) ->
+    lists:map(fun({V, S}) -> ds:add({V, A}, S) end, lists:zip(Vs, SubSpec)).
