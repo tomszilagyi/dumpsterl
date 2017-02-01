@@ -77,20 +77,27 @@ kind(_T) -> leaf.
 %% declarative type hierarchy specification.
 %% Compilation should also optimize away the getopt/1 calls,
 %% taking a concrete options configuration into account.
-subtype(V, 'T') when is_number(V) -> numeric;
+subtype([], 'T') -> [];
+subtype({}, 'T') -> {};
+subtype(V, 'T') when is_number(V) -> number;
 subtype(V, 'T') when is_atom(V) -> atom;
 subtype(V, 'T') when is_list(V) -> list;
 subtype(V, 'T') when is_tuple(V) -> tuple;
 subtype(V, 'T') when is_binary(V) -> binary;
 
-subtype(N, numeric) when is_integer(N) -> integer;
-subtype(N, numeric) when is_float(N) -> float;
+subtype(N, number) when is_integer(N) -> integer;
+subtype(N, number) when is_float(N) -> float;
 
-subtype(I, integer) ->
-    case getopt(mag) of
-        0 -> '$null';
-        N -> {mag, mag(I, N)}
-    end;
+subtype(I, integer) when I >= 0, I =< 255 -> byte;
+subtype(I, integer) when I >= 0, I =< 16#10ffff -> char;
+subtype(I, integer) when I > 0 -> pos_integer;
+subtype(I, integer) when I >= 0 -> non_neg_integer;
+subtype(I, integer) when I < 0 -> neg_integer;
+%% subtype(I, integer) ->
+%%     case getopt(mag) of
+%%         0 -> '$null';
+%%         N -> {mag, mag(I, N)}
+%%     end;
 
 subtype(F, float) ->
     case getopt(mag) of
@@ -98,14 +105,15 @@ subtype(F, float) ->
         N -> {mag, mag(F, N)}
     end;
 
-subtype([], list) -> empty_list;
+%%subtype([], list) -> nil;
 subtype(L, list) ->
     case is_str_printable(L) of
         true -> str_printable;
-        false -> {list, length(L)}
+        false -> nonempty_list
     end;
 
-subtype({}, tuple) -> empty_tuple;
+subtype(L, nonempty_list) -> {'$elements', L};
+
 subtype(T, tuple) ->
     case dyn_record(T) of
         {RecName, Size} -> {record, {RecName, Size}};
@@ -149,9 +157,9 @@ subtype(S, str_alpha) ->
     end;
 
 %% compound types where we want to recurse on their elements:
-subtype(L, {list,_N}) -> {'$elements', L};
-subtype(T, {tuple,_N}) -> {'$elements', tuple_to_list(T)};
-subtype(R, {record, {_RecName,_Size}}) -> {'$elements', tl(tuple_to_list(R))};
+%%subtype(L, {list,_N}) -> {'$elements', L};
+subtype(T, {tuple,_N}) -> {'$fields', tuple_to_list(T)};
+subtype(R, {record, {_RecName,_Size}}) -> {'$fields', tl(tuple_to_list(R))};
 
 subtype(_V, _Class) -> '$null'.
 

@@ -85,8 +85,10 @@ add({V, A}=VA, {Class, Data0, SubSpec}) ->
     case ds_types:subtype(V, Class) of
         '$null' -> %% leaf type
             {Class, update(VA, Class, Data0), SubSpec};
-        {'$elements', Items} -> %% compound type with sub-elements
-            {Class, update(VA, Class, Data0), recur({Items, A}, SubSpec)};
+        {'$fields', Fields} -> %% compound type with different sub-fields
+            {Class, update(VA, Class, Data0), recur_fields({Fields, A}, SubSpec)};
+        {'$elements', Items} -> %% container type with a list of elements
+            {Class, update(VA, Class, Data0), recur_items({Items, A}, SubSpec)};
         SubType -> %% merge data into subtype spec
             {Class, Data0, merge(VA, SubType, SubSpec)}
     end.
@@ -119,8 +121,16 @@ merge(VA, Class, Spec) ->
         SubSpec -> lists:keystore(Class, 1, Spec, add(VA, SubSpec))
     end.
 
-%% recurse on the per-element sub-specs of compound types
-recur({Vs, A}, []) ->
+%% recurse on the per-field sub-specs of compound types
+recur_fields({Vs, A}, []) ->
     lists:map(fun(V) -> ds:new('T', {V, A}) end, Vs);
-recur({Vs, A}, SubSpec) ->
+recur_fields({Vs, A}, SubSpec) ->
     lists:map(fun({V, S}) -> ds:add({V, A}, S) end, lists:zip(Vs, SubSpec)).
+
+%% recurse on elements of container types
+recur_items({Vs, A}, []) ->
+    [lists:foldl(fun(V, Spec) -> ds:add({V, A}, Spec) end,
+                 ds:new('T'), Vs)];
+recur_items({Vs, A}, [SubSpec]) ->
+    [lists:foldl(fun(V, Spec) -> ds:add({V, A}, Spec) end,
+                 SubSpec, Vs)].
