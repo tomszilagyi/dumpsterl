@@ -9,6 +9,8 @@
         , new/0
         , new/1
         , new/2
+        , simplify/1
+        , join_up/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -110,3 +112,40 @@ merge_items({Vs, A}, []) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new('T'), Vs)];
 merge_items({Vs, A}, [SubSpec]) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, SubSpec, Vs)].
+
+
+%% Cut unnecessary abstract types
+%% (those having a single child and no terms captured themselves)
+%% from the tree. E.g. if all terms are tuples of three, the tree
+%%   'T' -> tuple -> {tuple, 3} -> ...
+%% will be simplified to
+%%   {tuple, 3} -> ...
+%% without any loss of information.
+simplify({Class, {Stats,_Ext} = Data, [SubSpec1]}) ->
+    Kind = ds_types:kind(Class),
+    Count = ds_stats:get_count(Stats),
+    if Kind =/= complex andalso Count =:= 0 ->
+            simplify(SubSpec1);
+       true ->
+            {Class, Data, [simplify(SubSpec1)]}
+    end;
+simplify({Class, Data, SubSpec}) ->
+    {Class, Data, [simplify(SSp) || SSp <- SubSpec]}.
+
+%% For performance, abstract type nodes do not update their data
+%% when collecting terms, since the same information will be stored
+%% further down the tree. Before evaulating/visualizing the tree,
+%% this function should be used to propagate the data upwards so
+%% the abstract nodes also have all the statistics.
+join_up({Class, Data0, SubSpec0}) ->
+    SubSpec = [join_up(SSp) || SSp <- SubSpec0],
+    Data = case ds_types:kind(Class) of
+               complex -> Data0; % don't cross type domains with the join
+               _       -> join_data(Data0, SubSpec)
+           end,
+    {Class, Data, SubSpec}.
+
+join_data(Data, SubSpec) -> lists:foldl(fun join_data_f/2, Data, SubSpec).
+
+join_data_f({_Class, {Stats1,_Ext1}, _SubSpec}, {Stats0, Ext0}) ->
+    {ds_stats:join(Stats0, Stats1), Ext0}.

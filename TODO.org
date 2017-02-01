@@ -70,6 +70,10 @@ user-friendly framework for data exploration in NoSQL environments.
   data structure, and how to display it, should reside in the
   statistics or private data module; gui code should remain generic).
 
+*** additional gui elements
+- search: allow entering a piece of string, data, etc.
+- toolbar: load, save, generate report, exit, etc.
+
 ** test commands
 
 %% whole kcase table with annotations from disk log:

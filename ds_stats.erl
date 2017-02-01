@@ -6,9 +6,11 @@
         , sample_data/0
         , sample_data/1
         , sample_data/2
+        , get_count/1
         , get_samples/1
         , pvs_new/1
         , pvs_add/2
+        , join/2
         ]).
 
 -import(ds_opts, [ getopt/1
@@ -34,6 +36,40 @@ stats_data(V, #stats{count = Count,
            min_pvs = update_min(V, MinPVS),
            max_pvs = update_max(V, MaxPVS),
            sample_data = sample_data(V, SD)}.
+
+get_count(#stats{count=Count}) -> Count.
+
+%% Join two statistics into one
+join(#stats{count = Count0,
+            min_pvs = MinPVS0,
+            max_pvs = MaxPVS0,
+            sample_data = SD0},
+     #stats{count = Count1,
+            min_pvs = MinPVS1,
+            max_pvs = MaxPVS1,
+            sample_data = SD1}) ->
+    #stats{count = Count0 + Count1,
+           min_pvs = join_pvs(MinPVS0, MinPVS1),
+           max_pvs = join_pvs(MaxPVS0, MaxPVS1),
+           sample_data = join_sample_data(SD0, SD1)}.
+
+join_pvs(undefined, PVS) -> PVS;
+join_pvs(PVS, undefined) -> PVS;
+
+join_pvs({min, Min, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
+         {min, Min, [{count, Count1}, {timespan, TSpMin1, TSpMax1}]}) ->
+    {min, Min, [{count, Count0+Count1},
+                {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
+join_pvs({min, M0, PVS0}, {min, M1,_PVS1}) when M0 < M1 -> {min, M0, PVS0};
+join_pvs({min, M0,_PVS0}, {min, M1, PVS1}) when M0 > M1 -> {min, M1, PVS1};
+
+join_pvs({max, Max, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
+         {max, Max, [{count, Count1}, {timespan, TSpMin1, TSpMax1}]}) ->
+    {max, Max, [{count, Count0+Count1},
+                {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
+join_pvs({max, M0, PVS0}, {max, M1,_PVS1}) when M0 > M1 -> {max, M0, PVS0};
+join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1}.
+
 
 update_min({V, Attrs}, undefined) ->
     {min, V, pvs_new({V, Attrs})};
@@ -110,6 +146,12 @@ drop2(L) -> drop2(L, false, []).
 drop2([],_DropThis, Acc) -> lists:reverse(Acc);
 drop2([E|R], false, Acc)  -> drop2(R, true, [E|Acc]);
 drop2([_E|R], true, Acc)  -> drop2(R, false, Acc).
+
+join_sample_data(SD0, SD1) ->
+    S0 = get_samples(SD0),
+    S1 = get_samples(SD1),
+    %% TODO we only care about the sample count and list of samples.
+    {0, length(S0)+length(S1), 0, 0, S0++S1}.
 
 %% get the list of samples collected from the sample_data tuple
 get_samples({_Div,_N,_Size,_Cap, Samples}) -> Samples.

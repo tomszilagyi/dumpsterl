@@ -23,7 +23,7 @@
           lc_stack,
           lc_children,
           text_stats,
-          text_priv,
+          text_ext,
           zipper
         }).
 
@@ -104,8 +104,8 @@ do_init([Server] = Config) ->
     BottomRightPanel = wxPanel:new(RightSplitter, []),
     BottomRightSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(BottomRightPanel, BottomRightSizer),
-    TextPriv = wxStaticText:new(BottomRightPanel, ?wxID_ANY, "Private data", []),
-    wxSizer:add(BottomRightSizer, TextPriv, []),
+    TextExt = wxStaticText:new(BottomRightPanel, ?wxID_ANY, "Extended data", []),
+    wxSizer:add(BottomRightSizer, TextExt, []),
 
     wxSplitterWindow:splitHorizontally(RightSplitter, TopRightPanel, BottomRightPanel),
     wxSplitterWindow:setSashGravity(RightSplitter, 0.5),
@@ -121,7 +121,7 @@ do_init([Server] = Config) ->
     wxFrame:show(Frame),
     State = #state{config=Config, frame=Frame, panel=Panel,
                    lc_stack=LC_Stack, lc_children=LC_Children,
-                   text_stats=TextStats, text_priv=TextPriv,
+                   text_stats=TextStats, text_ext=TextExt,
                    zipper=Zipper},
     {Frame, update_gui(State)}.
 
@@ -171,29 +171,29 @@ terminate(_Reason, _State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
-                  text_stats=TextStats, text_priv=TextPriv,
+                  text_stats=TextStats, text_ext=TextExt,
                   zipper=Zipper} = State) ->
     wxListCtrl:deleteAllItems(LC_Stack),
     add_stack(LC_Stack, ds_zipper:stack(Zipper), 0),
     wxListCtrl:deleteAllItems(LC_Children),
     add_stack(LC_Children, ds_zipper:child_list(Zipper), 0),
-    {Stats, Priv} = ds_zipper:data(Zipper),
+    {Stats, Ext} = ds_zipper:data(Zipper),
     StatsStr = io_lib:format("~p", [Stats]),
-    PrivStr = io_lib:format("~p", [Priv]),
+    ExtStr = io_lib:format("~p", [Ext]),
     wxStaticText:setLabel(TextStats, StatsStr),
-    wxStaticText:setLabel(TextPriv, PrivStr),
+    wxStaticText:setLabel(TextExt, ExtStr),
     State.
 
 %% populate ListCtrl with stack
 add_stack(_LC, [], N) -> N;
-add_stack(LC, [Type|Rest], N) ->
+add_stack(LC, [{Type, Count}|Rest], N) ->
     TypeStr = io_lib:format("~p", [Type]),
     wxListCtrl:insertItem(LC, N, ""),
     wxListCtrl:setItem(LC, N, 0, TypeStr),
-    wxListCtrl:setItem(LC, N, 1, "123,456"),
+    wxListCtrl:setItem(LC, N, 1, integer_to_list(Count)),
     add_stack(LC, Rest, N+1).
 
 load_zipper(Filename) ->
     {ok, Bin} = file:read_file(Filename),
     Tree = binary_to_term(Bin),
-    ds_zipper:from_tree(Tree).
+    ds_zipper:from_tree(ds:join_up(ds:simplify(Tree))).

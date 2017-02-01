@@ -14,8 +14,8 @@
 -type zntree() :: {thread(), znode()}.
 
 %% Constructor: convert a spec tree to zipper format
-from_tree({'T', Data, SubSpec}) ->
-    {[], {[], ft([{'T', Data, SubSpec}])}}.
+from_tree({Class, Data, SubSpec}) ->
+    {[], {[], ft([{Class, Data, SubSpec}])}}.
 
 ft([]) -> [];
 ft([{Class, Data, Children}|R]) ->
@@ -26,16 +26,19 @@ class({_Thread, {_Left, [{Class,_Data, _Children} | _Right]}}) -> Class.
 data({_Thread, {_Left, [{_Class, Data, _Children} | _Right]}}) -> Data.
 
 %% Get the stack of classes up to and including the current one
-stack({Thread, {_Left, [{Class, _Data, _Children} | _Right]}}) ->
-    stack(Thread, [Class]).
+stack({Thread, {_Left, [{Class, Data, _Children} | _Right]}}) ->
+    {Stats,_Ext} = Data,
+    stack(Thread, [{Class, ds_stats:get_count(Stats)}]).
 
 stack([], Acc) -> Acc;
-stack([{_L,[{Class, _Data}|_R]}|Rest], Acc) ->
-    stack(Rest, [Class|Acc]).
+stack([{_L,[{Class, Data}|_R]}|Rest], Acc) ->
+    {Stats,_Ext} = Data,
+    stack(Rest, [{Class, ds_stats:get_count(Stats)}|Acc]).
 
 %% Get the list of classes of children nodes below the current one
 child_list({_Thread, {_L, [{_Class, _Data, {LeftChi, RightChi}}|_R]}}) ->
-    [Class || {Class, _D, _Chi} <- lists:reverse(LeftChi) ++ RightChi].
+    [{Class, ds_stats:get_count(Stats)} ||
+        {Class, {Stats,_Ext}, _Chi} <- lists:reverse(LeftChi) ++ RightChi].
 
 %% Move to the left of the current level
 -spec left(zntree()) -> zntree().
