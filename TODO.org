@@ -69,3 +69,9 @@ user-friendly framework for data exploration in NoSQL environments.
   gui can be displayed on a modular basis (i.e. knowledge of the
   data structure, and how to display it, should reside in the
   statistics or private data module; gui code should remain generic).
+
+** test commands
+
+%% whole kcase table with annotations from disk log:
+ds_drv:spec_disk_log("/kred/live/system/db/kcase.DCD", {0, [{ts, #kcase.create_date}, {key, #kcase.cid}]}, inf, [{progress, 10000}, {dump, "/tmp/ds.bin"}]).
+

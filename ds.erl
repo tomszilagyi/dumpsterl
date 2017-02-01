@@ -11,10 +11,6 @@
         , new/2
         ]).
 
--import(ds_opts, [ getopt/1
-                 , setopts/1
-                 ]).
-
 -include_lib("eunit/include/eunit.hrl").
 
 %% A data spec is a list of type specs.
@@ -29,14 +25,14 @@
 %%   Toplevel type examples: integer, atom, list.
 %% - Data is node-specific data as a tuple:
 %%
-%%   {Stats, Priv}
+%%   {Stats, Ext}
 %%
 %%   - Stats is a tuple of general statistics data, eg.:
 %%     - an integer count of data items covered by this type class.
 %%     - an even sampling of the data values
-%%   - Priv is private data (specific to the class), holds
-%%     further statistics. For recursive types (lists and tuples)
-%%     it is a list of specs for the individual elements.
+%%   - Ext is class-specific extra/extended data to hold
+%%     further statistics.
+%%
 %% - SubSpec is a list of child nodes. Depending on the kind of type
 %%   denoted by Class, this may be a list of subtypes or in case of
 %%   compound types, a list of specs corresponding to the elements
@@ -47,7 +43,7 @@
 new() -> new('T').
 
 new(Class) ->
-    Data = {ds_stats:stats_data(), ds_types:priv_data(Class)},
+    Data = {ds_stats:stats_data(), ds_types:ext_data(Class)},
     {Class, Data, []}.
 
 %% Initialize, immediately adding one data term
@@ -55,23 +51,6 @@ new(Class, Data) -> add(Data, new(Class)).
 
 %% Add the value V to Spec. add/2 is written so it can be
 %% used as a function to lists:foldl/3.
-%%
-%% When adding a value to the spec, each type class knows
-%  which subtype the data fits in.
-%% Adding a new value is a recursive process:
-%% - starting from 'T' (root type) class, each class
-%%   - accounts for the new value itself;
-%%   - chooses appropriate subtype (if any) and
-%%   - passes the value to that subtype.
-%%
-%% Eg. when adding the value 100, 'T' accounts
-%% for this (increases counter of values, etc),
-%% determines that it is a numeric type, and so
-%% passes it to 'numeric' which, in turn, determines
-%% it is an integer and passes to 'integer', which
-%% might still subtype it based on its magnitude.
-%% On all levels of the hierarchy, counters will be
-%% increased and samples will be collected.
 
 %% TODO maybe require V to have a normalized Attrs here
 %% (ds_drv to pre-process) so we can do simple pattern matching
@@ -81,21 +60,20 @@ new(Class, Data) -> add(Data, new(Class)).
 %% piece of data satisfies certain criteria to be 'interesting'.
 %% This attribute would ensure that the data is kept stored
 %% regardless of sampling allowances.
-add({V, A}=VA, {Class, Data0, SubSpec}) ->
-    case ds_types:subtype(V, Class) of
-        '$null' -> %% leaf type
-            {Class, update(VA, Class, Data0), SubSpec};
-        {'$fields', Fields} -> %% compound type with different sub-fields
-            {Class, update(VA, Class, Data0), recur_fields({Fields, A}, SubSpec)};
-        {'$elements', Items} -> %% container type with a list of elements
-            {Class, update(VA, Class, Data0), recur_items({Items, A}, SubSpec)};
-        SubType -> %% merge data into subtype spec
-            {Class, Data0, merge(VA, SubType, SubSpec)}
-    end.
+add({V,_A}=VA, {Class, Data, SubSpec}) ->
+    add(VA, {Class, Data, SubSpec}, ds_types:subtype(V, Class)).
 
-update(VA, Class, {StatsData, PrivData}) ->
-    {ds_stats:stats_data(VA, StatsData),
-     ds_types:priv_data(VA, Class, PrivData)}.
+add(VA, {Class, Data0, SubSpec}, '$null') -> % leaf type
+    {Class, update(VA, Class, Data0), SubSpec};
+add({_V, A}=VA, {Class, Data0, SubSpec}, {'$fields', Fields}) -> % many subtypes
+    {Class, update(VA, Class, Data0), merge_fields({Fields, A}, SubSpec)};
+add({_V, A}=VA, {Class, Data0, SubSpec}, {'$elements', Items}) -> % one subtype
+    {Class, update(VA, Class, Data0), merge_items({Items, A}, SubSpec)};
+add(VA, {Class, Data0, SubSpec}, SubType) -> % abstract type
+    {Class, Data0, merge(VA, SubType, SubSpec)}.
+
+update(VA, Class, {Stats, Ext}) ->
+    {ds_stats:stats_data(VA, Stats), ds_types:ext_data(VA, Class, Ext)}.
 
 -ifdef(discarded).
 %% choose the appropriate subtype based on the filters
@@ -121,16 +99,14 @@ merge(VA, Class, Spec) ->
         SubSpec -> lists:keystore(Class, 1, Spec, add(VA, SubSpec))
     end.
 
-%% recurse on the per-field sub-specs of compound types
-recur_fields({Vs, A}, []) ->
-    lists:map(fun(V) -> ds:new('T', {V, A}) end, Vs);
-recur_fields({Vs, A}, SubSpec) ->
-    lists:map(fun({V, S}) -> ds:add({V, A}, S) end, lists:zip(Vs, SubSpec)).
+%% merge the per-field sub-specs of compound types
+merge_fields({Vs, A}, []) ->
+    lists:map(fun(V) -> new('T', {V, A}) end, Vs);
+merge_fields({Vs, A}, SubSpec) ->
+    lists:map(fun({V, S}) -> add({V, A}, S) end, lists:zip(Vs, SubSpec)).
 
-%% recurse on elements of container types
-recur_items({Vs, A}, []) ->
-    [lists:foldl(fun(V, Spec) -> ds:add({V, A}, Spec) end,
-                 ds:new('T'), Vs)];
-recur_items({Vs, A}, [SubSpec]) ->
-    [lists:foldl(fun(V, Spec) -> ds:add({V, A}, Spec) end,
-                 SubSpec, Vs)].
+%% merge elements of container types into the single inferior spec
+merge_items({Vs, A}, []) ->
+    [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new('T'), Vs)];
+merge_items({Vs, A}, [SubSpec]) ->
+    [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, SubSpec, Vs)].

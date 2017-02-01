@@ -3,8 +3,8 @@
 
 -export([ kind/1
         , subtype/2
-        , priv_data/1
-        , priv_data/3
+        , ext_data/1
+        , ext_data/3
         ]).
 
 -import(ds_opts, [ getopt/1
@@ -157,7 +157,6 @@ subtype(S, str_alpha) ->
     end;
 
 %% compound types where we want to recurse on their elements:
-%%subtype(L, {list,_N}) -> {'$elements', L};
 subtype(T, {tuple,_N}) -> {'$fields', tuple_to_list(T)};
 subtype(R, {record, {_RecName,_Size}}) -> {'$fields', tl(tuple_to_list(R))};
 
@@ -218,21 +217,21 @@ char_in_ranges(C, [_Char | Rest]) -> char_in_ranges(C, Rest).
 mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 
 
-%% class-specific private data
+%% class-specific extra data
 
 %% class-specific initializer
-priv_data(_Class) -> [].
+ext_data(_Class) -> [].
 
-priv_data(VA, atom, PD) -> priv_data_atom(VA, PD);
-priv_data(_V,_Class, PrivData) -> PrivData.
+ext_data(VA, atom, PD) -> ext_data_atom(VA, PD);
+ext_data(_V,_Class, PrivData) -> PrivData.
 
 %% For atoms, maintain a dictionary of per-value stats for each value
-priv_data_atom({V, Attrs}, PD) ->
-    PVS = case orddict:find(V, PD) of
+ext_data_atom({V, Attrs}, Ext) ->
+    PVS = case orddict:find(V, Ext) of
               error -> ds_stats:pvs_new({V, Attrs});
               {ok, PVS0} -> ds_stats:pvs_add({V, Attrs}, PVS0)
           end,
-    orddict:store(V, PVS, PD).
+    orddict:store(V, PVS, Ext).
 
 %% Tests
 
