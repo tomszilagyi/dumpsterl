@@ -71,6 +71,9 @@ add({_V, A}=VA, {Class, Data0, SubSpec}, {'$fields', Fields}) -> % many subtypes
     {Class, update(VA, Class, Data0), merge_fields({Fields, A}, SubSpec)};
 add({_V, A}=VA, {Class, Data0, SubSpec}, {'$elements', Items}) -> % one subtype
     {Class, update(VA, Class, Data0), merge_items({Items, A}, SubSpec)};
+add({_V, A}=VA, {Class, Data0, SubSpec}, {'$improper_list', Items, Tail}) ->
+    %% one subtype for list items, one for tail
+    {Class, update(VA, Class, Data0), merge_improper({Items, Tail, A}, SubSpec)};
 add(VA, {Class, Data0, SubSpec}, SubType) -> % abstract type
     {Class, Data0, merge(VA, SubType, SubSpec)}.
 
@@ -112,6 +115,14 @@ merge_items({Vs, A}, []) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new('T'), Vs)];
 merge_items({Vs, A}, [SubSpec]) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, SubSpec, Vs)].
+
+%% merge spec for improper list
+merge_improper(VA, []) ->
+    merge_improper(VA, [new('T'), new('T')]);
+merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
+    [ListSpec] = merge_items({Vs, A}, [ListSpec0]),
+    TailSpec = add({Vt, A}, TailSpec0),
+    [ListSpec, TailSpec].
 
 
 %% Cut unnecessary abstract types

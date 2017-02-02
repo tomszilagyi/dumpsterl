@@ -60,9 +60,9 @@ types() ->
 %% Category, or "kind", of type.
 %% Each type belongs to one of three kinds:
 %% - abstract: a type which can be broken into subtypes;
-%% - compound: a type which is a leaf type, but can be broken down
+%% - complex:  a type which is a leaf type, but can be broken down
 %%             into elements e.g. lists, tuples, records;
-%% - leaf: a leaf type with no sub-categorization.
+%% - leaf:     a leaf type with no further sub-categorization.
 %%
 %% For abstract types, the node's SubSpec is a list of subtypes;
 %% for complex types, SubSpec is a list of type specs that map to
@@ -95,26 +95,34 @@ subtype(I, integer) when I >= 0, I =< 16#10ffff -> char;
 subtype(I, integer) when I > 0 -> pos_integer;
 subtype(I, integer) when I >= 0 -> non_neg_integer;
 subtype(I, integer) when I < 0 -> neg_integer;
-%% subtype(I, integer) ->
-%%     case getopt(mag) of
-%%         0 -> '$null';
-%%         N -> {mag, mag(I, N)}
-%%     end;
+
+subtype(I, IntType) when IntType =:= pos_integer;
+                         IntType =:= non_neg_integer;
+                         IntType =:= neg_integer ->
+    case getopt(mag) of
+        0 -> '$null';
+        N -> {IntType, {mag, mag(I, N)}}
+    end;
 
 subtype(F, float) ->
     case getopt(mag) of
         0 -> '$null';
-        N -> {mag, mag(F, N)}
+        N -> {float, {mag, mag(F, N)}}
     end;
 
-%%subtype([], list) -> nil;
 subtype(L, list) ->
-    case is_str_printable(L) of
-        true -> str_printable;
-        false -> nonempty_list
+    case is_improper(L) of
+        false -> nonempty_list;
+        true -> improper_list
     end;
 
 subtype(L, nonempty_list) -> {'$elements', L};
+    %% %% FIXME can't have a complex type with potential subtype!
+    %% case is_str_printable(L) of
+    %%     true -> str_printable;
+    %%     false -> {'$elements', L}
+    %% end;
+subtype(L, improper_list) -> improper_list(L);
 
 subtype(T, tuple) ->
     case dyn_record(T) of
@@ -127,7 +135,7 @@ subtype(S, str_printable) ->
         true -> str_alnum;
         false ->
             case getopt(strlen) of
-                true -> {len, length(S)};
+                true -> {str_printable, {len, length(S)}};
                 false -> '$null'
             end
     end;
@@ -140,7 +148,7 @@ subtype(S, str_alnum) ->
                 true -> str_alpha;
                 false ->
                     case getopt(strlen) of
-                        true -> {len, length(S)};
+                        true -> {str_alnum, {len, length(S)}};
                         false -> '$null'
                     end
             end
@@ -148,13 +156,13 @@ subtype(S, str_alnum) ->
 
 subtype(S, str_integer) ->
     case getopt(strlen) of
-        true -> {len, length(S)};
+        true -> {str_integer, {len, length(S)}};
         false -> '$null'
     end;
 
 subtype(S, str_alpha) ->
     case getopt(strlen) of
-        true -> {len, length(S)};
+        true -> {str_alpha, {len, length(S)}};
         false -> '$null'
     end;
 
@@ -180,6 +188,17 @@ opt_strlen(true) ->
 opt_strlen_stub(false) -> [];
 opt_strlen_stub(true)  -> [{'$dynamic', len, fun length/1}].
 -endif.
+
+%% Find out whether given (nonempty) list is improper or not.
+is_improper([]) -> false;
+is_improper([_H|T]) -> is_improper(T);
+is_improper(_T) -> true.
+
+improper_list(L) -> improper_list(L, []).
+
+improper_list([], _Acc) -> nonempty_list;
+improper_list([H|T], Acc) -> improper_list(T, [H|Acc]);
+improper_list(T, Acc) -> {'$improper_list', Acc, T}.
 
 %% dynamically classify records; also tagged with size because
 %% we can never be sure that a tuple is actually a record.
