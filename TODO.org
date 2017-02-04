@@ -45,15 +45,14 @@ user-friendly framework for data exploration in NoSQL environments.
     see where the view is located; clicking on any parent
     jumps up to that level
     eg. T -> tuple -> {record, {kcase, 21}}
-  - subtype list
+  - subtype / element list
     shows the list of subspecs below the currently selected one;
     clicking on any of them navigates the view down to that level
 
-    in case of complex structures, which are recursive via their
-    private data, this shows a list of these specs, allowing the
-    user to click on one of them. The view is then directed to the
-    toplevel spec of that element, as a further level down the
-    hierarchy.
+    in case of complex structures, this shows a list of these specs,
+    allowing the user to click on one of them. The view is then
+    directed to the toplevel spec of that element, as a further level
+    down the hierarchy.
     eg. T -> tuple -> {record, {kcase, 21}} -> element(2) or #kcase.cid
 
     the transitions may be distinguished by coloring the entry
@@ -70,9 +69,27 @@ user-friendly framework for data exploration in NoSQL environments.
   data structure, and how to display it, should reside in the
   statistics or private data module; gui code should remain generic).
 
+- the field attributes information for records to be stored in Ext
+  - gather field attributes automatically, when first encountering
+    a record type
+  - the means depends on the data source:
+    - mnesia -> mnesia:table_info(T, attributes)
+    - disk_log -> read schema.DAT
+    - fallback: record attribute definitions in loaded beam/source
+      files
+
+- when showing a type with sub-fields, the columns in the lower tab
+  should be No., FieldName, Type instead of Type, Count (since these
+  counts are always all identical to that of the complex type)
+
 *** additional gui elements
 - search: allow entering a piece of string, data, etc.
 - toolbar: load, save, generate report, exit, etc.
+- manually add field information in case it could not be
+  gathered automatically
+- manually supply timestamp format function
+  e.g. if it turns out the ts is in gregorian seconds, allow
+  user to set fun calendar:gregorian_seconds_to_datetime/1.
 
 ** test commands
 

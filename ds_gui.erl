@@ -19,7 +19,8 @@
         {
           config,
           frame,
-          panel,
+          panel_main,
+          panel_left,
           lc_stack,
           lc_children,
           text_stats,
@@ -66,8 +67,10 @@ do_init([Server] = Config) ->
                                {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
     wxSizer:add(TopLeftSizer, LC_Stack, SizerOpts),
     wxListCtrl:insertColumn(LC_Stack, 0, "Type", []),
-    wxListCtrl:insertColumn(LC_Stack, 1, "Count", []),
+    wxListCtrl:insertColumn(LC_Stack, 1, "Count", [{format, ?wxLIST_FORMAT_RIGHT}]),
+    wxListCtrl:setColumnWidth(LC_Stack, 1, ?wxLIST_AUTOSIZE),
     wxListCtrl:connect(LC_Stack, command_list_item_selected, []),
+    wxListCtrl:connect(LC_Stack, size, [{skip, true}]),
 
     BottomLeftPanel = wxPanel:new(LeftSplitter, []),
     BottomLeftSizer = wxBoxSizer:new(?wxVERTICAL),
@@ -81,8 +84,10 @@ do_init([Server] = Config) ->
                                   {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
     wxSizer:add(BottomLeftSizer, LC_Children, SizerOpts),
     wxListCtrl:insertColumn(LC_Children, 0, "Type", []),
-    wxListCtrl:insertColumn(LC_Children, 1, "Count", []),
+    wxListCtrl:insertColumn(LC_Children, 1, "Count", [{format, ?wxLIST_FORMAT_RIGHT}]),
+    wxListCtrl:setColumnWidth(LC_Children, 1, ?wxLIST_AUTOSIZE),
     wxListCtrl:connect(LC_Children, command_list_item_selected, []),
+    wxListCtrl:connect(LC_Children, size, [{skip, true}]),
 
     wxSplitterWindow:splitHorizontally(LeftSplitter, TopLeftPanel, BottomLeftPanel),
     wxSplitterWindow:setSashGravity(LeftSplitter, 0.5),
@@ -119,7 +124,8 @@ do_init([Server] = Config) ->
     wxSizer:add(Sizer, Splitter, SizerOpts),
 
     wxFrame:show(Frame),
-    State = #state{config=Config, frame=Frame, panel=Panel,
+    State = #state{config=Config, frame=Frame, panel_main=Panel,
+                   panel_left=LeftPanel,
                    lc_stack=LC_Stack, lc_children=LC_Children,
                    text_stats=TextStats, text_ext=TextExt,
                    zipper=Zipper},
@@ -140,7 +146,8 @@ handle_event(#wx{id = ?LIST_CTRL_CHILDREN,
     Zipper = ds_zipper:nth_child(Zipper0, Item),
     State = State0#state{zipper=Zipper},
     {noreply, update_gui(State)};
-
+handle_event(#wx{event = #wxSize{}}, State) ->
+    {noreply, adjust_list_cols(State)};
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
     {noreply, State}.
@@ -174,14 +181,37 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_stats=TextStats, text_ext=TextExt,
                   zipper=Zipper} = State) ->
     wxListCtrl:deleteAllItems(LC_Stack),
-    add_stack(LC_Stack, ds_zipper:stack(Zipper), 0),
+    Stack = ds_zipper:stack(Zipper),
+    LastIdx = length(Stack)-1,
+    add_stack(LC_Stack, Stack, 0),
+    wxListCtrl:setItemBackgroundColour(LC_Stack, LastIdx, {64, 128, 192}),
+    wxListCtrl:setItemTextColour(LC_Stack, LastIdx, {255, 255, 255}),
+
     wxListCtrl:deleteAllItems(LC_Children),
     add_stack(LC_Children, ds_zipper:child_list(Zipper), 0),
+
     {Stats, Ext} = ds_zipper:data(Zipper),
     StatsStr = io_lib:format("~p", [Stats]),
     ExtStr = io_lib:format("~p", [Ext]),
     wxStaticText:setLabel(TextStats, StatsStr),
     wxStaticText:setLabel(TextExt, ExtStr),
+    adjust_list_cols(State).
+
+adjust_list_cols(#state{panel_left=LeftPanel,
+                        lc_stack=LC_Stack, lc_children=LC_Children} = State) ->
+    wxListCtrl:setColumnWidth(LC_Stack, 1, ?wxLIST_AUTOSIZE),
+    wxListCtrl:setColumnWidth(LC_Children, 1, ?wxLIST_AUTOSIZE),
+    Col1W = max(wxListCtrl:getColumnWidth(LC_Stack, 1),
+                wxListCtrl:getColumnWidth(LC_Children, 1)),
+    {W,_H} = wxWindow:getSize(LeftPanel),
+    Col0W = W - Col1W - 15,
+    if Col0W > 0 ->
+            wxListCtrl:setColumnWidth(LC_Stack, 0, Col0W),
+            wxListCtrl:setColumnWidth(LC_Stack, 1, Col1W),
+            wxListCtrl:setColumnWidth(LC_Children, 0, Col0W),
+            wxListCtrl:setColumnWidth(LC_Children, 1, Col1W);
+       true -> ok
+    end,
     State.
 
 %% populate ListCtrl with stack

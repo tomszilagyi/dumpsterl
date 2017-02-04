@@ -90,11 +90,13 @@ subtype(V, 'T') when is_binary(V) -> binary;
 subtype(N, number) when is_integer(N) -> integer;
 subtype(N, number) when is_float(N) -> float;
 
-subtype(I, integer) when I >= 0, I =< 255 -> byte;
-subtype(I, integer) when I >= 0, I =< 16#10ffff -> char;
-subtype(I, integer) when I > 0 -> pos_integer;
 subtype(I, integer) when I >= 0 -> non_neg_integer;
 subtype(I, integer) when I < 0 -> neg_integer;
+
+subtype(0, non_neg_integer) -> 0;
+subtype(_I, non_neg_integer) -> pos_integer;
+subtype(I, pos_integer) when I =< 16#10ffff -> char;
+subtype(I, char) when I =< 255 -> byte;
 
 subtype(I, IntType) when IntType =:= pos_integer;
                          IntType =:= non_neg_integer;
