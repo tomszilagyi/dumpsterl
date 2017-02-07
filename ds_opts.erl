@@ -16,6 +16,16 @@
 %%       0: turn off subgrouping;
 %%       N: subgroup N orders of magnitude into one (defaults to 3)
 %%
+%%   rec_attrs: true | false | force
+%%     collect record attributes and enrich the spec with those
+%%       referenced in the data.
+%%        true: collect data once at the beginning of first run
+%%       false: turn off completely
+%%       force: force (re)collection even if data has been collected;
+%%              useful if code has been changed in the system
+%%              NB. just including rec_attrs (with no value) in the
+%%              options list is equivalent to {rec_attrs, force}.
+%%
 %%   samples: N (must be an integer power of 2)
 %%       sample buffer size for collecting example data
 %%
@@ -25,15 +35,16 @@
 %% other options:
 %%
 %%   dump: filename() | false
-%%     dump the accumulated spec on each progress tick;
-%%     only works in case progress output is enabled.
+%%     dump the accumulated spec on each progress tick (if progress
+%%       output is enabled) and at the end.
 %%       false: no dump is written
 %%       Filename: the accumulated spec is dumped as an Erlang binary
-%%         to this filename on each progress tick (dot or number).
+%%         to this filename on each progress tick (dot or number) and
+%%         at the end.
 %%         Defaults to "dataspec.bin" if option is set with no value.
 %%
 %%   progress: pos_integer() | false
-%%     output progress information
+%%     output progress information and (if dump is enabled) write dumps
 %%       false: no output
 %%       N: output progress info every N samples
 
@@ -52,6 +63,7 @@ opts() ->
     , {progress,     false,        100000}
     , {samples,      16,           16}
     , {strlen,       false,        true}
+    , {rec_attrs,    true,         force}
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
@@ -92,6 +104,8 @@ normalize_opt(samples, N) ->
     true = is_integer(N) andalso is_power_of_2(N), N;
 normalize_opt(strlen, B) ->
     true = is_boolean(B), B;
+normalize_opt(rec_attrs, A) ->
+    true = lists:member(A, [true, false, force]), A;
 normalize_opt(_Key, Value) -> Value.
 
 is_power_of_2(2) -> true;

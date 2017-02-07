@@ -1,25 +1,55 @@
 -module(ds_records).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([collect/0]).
+-export([init/0, lookup/1]).
+
+-define(STORAGE_KEY, dataspec_rec_attrs).
+
+init() -> maybe_init(ds_opts:getopt(rec_attrs)).
+
+maybe_init(false) ->
+    erase(?STORAGE_KEY),
+    ok;
+maybe_init(true) ->
+    case get(?STORAGE_KEY) of
+        undefined -> do_init();
+        _RecAttrs -> ok
+    end;
+maybe_init(force) -> do_init().
+
+do_init() ->
+    LoadedModules = code:all_loaded(),
+    io:format("collecting record attributes from ~B loaded modules ... ",
+              [length(LoadedModules)]),
+    Attrs = collect(LoadedModules),
+    io:format("read ~B records.\n", [length(Attrs)]),
+    put(?STORAGE_KEY, Attrs),
+    ok.
+
+lookup(RecId) ->
+    case get(?STORAGE_KEY) of
+        undefined -> false;
+        RecAttrs ->
+            case orddict:find(RecId, RecAttrs) of
+                error -> false;
+                {ok, RAs} -> RAs
+            end
+    end.
 
 %% Collect attributes of records
 %% Returns an orddict keyed with {RecName, Arity}
 %% where values are orddicts keyed with {SourceFile, LineNumber}
 %% where values are the lists of attribute (field) names.
-collect() ->
-    LoadedModules = code:all_loaded(),
-    collect(LoadedModules, []).
+collect(LoadedModules) -> collect(LoadedModules, []).
 
 collect([], Acc) -> Acc;
-collect([{Module, File}|Rest], Acc) ->
+collect([{_Module, File}|Rest], Acc) ->
     case read_records(File, []) of
         [] ->
             collect(Rest, Acc);
         RAs when is_list(RAs) ->
             collect(Rest, merge(RAs, Acc));
-        Error ->
-            io:format("Module ~p: ~p~n", [Module, Error]),
+        _Error ->
             collect(Rest, Acc)
     end.
 

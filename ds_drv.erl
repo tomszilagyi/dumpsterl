@@ -63,6 +63,7 @@ spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
 %% Backend function for folding through disk_log files
 %% Useful for Mnesia .DCD and .DCL
 fold_disk_log(Fun, Acc0, Filename, Spec0, Limit) ->
+    ds_records:init(),
     {ok, dlog} = disk_log:open([ {name, dlog}
                                , {file, Filename}
                                , {mode, read_only}
@@ -128,6 +129,7 @@ accessors(mnesia) ->
 
 %% Generic backend function for folding through tables via accessors
 fold_tab(Fun, Acc0, Type, Tab, Spec0, Limit) ->
+    ds_records:init(),
     {FirstF, _ReadF, _NextF} = Accessors = accessors(Type),
     Progress = ds_progress:init(),
     Spec = normalize_spec(Spec0),

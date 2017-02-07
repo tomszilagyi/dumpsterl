@@ -10,15 +10,17 @@
 
 %% Progress state
 -record(progress, { major = 50       % one major tick = this many minor ticks
-                  , minor            % integer | false (disable output)
+                  , minor = false    % integer | false (disable output)
                   , count_recv  = 0  % count of received items
                   , count_minor = 0  % number of minor ticks so far
                   , count_major = 0  % number of major ticks so far
                   , start_ts         % timestamp when initializing progress
                   }).
 
-init() ->
-    Minor = ds_opts:getopt(progress),
+init() -> init(ds_opts:getopt(progress)).
+
+init(false) -> #progress{};
+init(Minor) ->
     io:format("progress (every ~B): ", [Minor]),
     #progress{minor=Minor, start_ts=os:timestamp()}.
 
@@ -48,7 +50,9 @@ emit_ticks(0,_Acc) -> ok;
 emit_ticks(N, Acc) -> dump_acc(Acc),
                       io:put_chars(string:chars($., N)).
 
-final(#progress{minor=false}, _Acc) -> false;
+final(#progress{minor=false}, Acc) ->
+    dump_acc(Acc),
+    Acc;
 final(#progress{count_recv=Count, start_ts=StartTS}, Acc) ->
     dump_acc(Acc),
     {StartMegaSecs, StartSecs, StartUSecs} = StartTS,

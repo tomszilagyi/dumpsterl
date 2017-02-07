@@ -242,11 +242,18 @@ mag(X, N) -> trunc(math:log10(abs(X))) div N * N.
 
 %% class-specific extra data
 
-%% class-specific initializer
+%% class-specific initializers
+ext_data({record, RecId}) ->
+    case ds_records:lookup(RecId) of
+        false -> [];
+        RAs -> RAs
+    end;
 ext_data(_Class) -> [].
 
-ext_data(VA, atom, PD) -> ext_data_atom(VA, PD);
-ext_data(_V,_Class, PrivData) -> PrivData.
+%% class-specific per-term updaters
+ext_data(VA, atom, Ext) -> ext_data_atom(VA, Ext);
+ext_data(_V,_Class, Ext) -> Ext.
+
 
 %% For atoms, maintain a dictionary of per-value stats for each value
 ext_data_atom({V, Attrs}, Ext) ->

@@ -79,8 +79,9 @@ user-friendly framework for data exploration in NoSQL environments.
       files
 
 - when showing a type with sub-fields, the columns in the lower tab
-  should be No., FieldName, Type instead of Type, Count (since these
-  counts are always all identical to that of the complex type)
+  should be Field, Attribute, Type instead of Type, Count (since these
+  counts are always all identical to that of the complex type).
+  Field is the field number and Attribute is the field name.
 
 *** additional gui elements
 - search: allow entering a piece of string, data, etc.
