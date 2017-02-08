@@ -47,6 +47,12 @@
 %%     output progress information and (if dump is enabled) write dumps
 %%       false: no output
 %%       N: output progress info every N samples
+%%
+%%   mnesia_dir: dirname()
+%%     The name of the mnesia directory where table data files are stored.
+%%     This option is useful if the Erlang node running dataspec does not
+%%     run a Mnesia instance where the tables being read belong, but has
+%%     access to the database filesystem.
 
 opts() ->
     %% The following table specifies the options interpreted.
@@ -64,6 +70,7 @@ opts() ->
     , {samples,      16,           16}
     , {strlen,       false,        true}
     , {rec_attrs,    true,         force}
+    , {mnesia_dir,   undefined,    undefined}
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
@@ -106,6 +113,8 @@ normalize_opt(strlen, B) ->
     true = is_boolean(B), B;
 normalize_opt(rec_attrs, A) ->
     true = lists:member(A, [true, false, force]), A;
+normalize_opt(mnesia_dir, D) ->
+    true = filelib:is_dir(D), D;
 normalize_opt(_Key, Value) -> Value.
 
 is_power_of_2(2) -> true;

@@ -37,6 +37,16 @@ user-friendly framework for data exploration in NoSQL environments.
   results regularly for each chunk or at the end
   (N > number of processors)
 - read schema.DAT to learn about record fields
+- treat dict types similar to tuples/records, where the keys
+  correspond to field names (with the notable exception that not all
+  instances necessarily have the same sets of keys, maybe only a
+  subset). This is also how maps should be implemented.
+  The GUI could show a toplevel stat of what keys there are (with what
+  freq, etc) and the below level individual per-key stats for values.
+- don't add the same value multiple times to samples, to maximize the
+  number of unique values shown. Instead, for each collected value,
+  maintain per-value stats to show how it is distributed across the
+  population.
 
 ** GUI browser concept
 - two panes: left for navigation, right for details
@@ -73,10 +83,16 @@ user-friendly framework for data exploration in NoSQL environments.
   - gather field attributes automatically, when first encountering
     a record type
   - the means depends on the data source:
+    - default: record attribute definitions in loaded beam/source
+      files, read once at the beginning, see rec_attrs in ds_opts.
     - mnesia -> mnesia:table_info(T, attributes)
+        This does not make sense: if dataspec is run on a system where
+        mnesia is up and running, the code accessing the tables is
+        also loaded, so we can get the same info (and more) from the
+        beam/source attributes.
     - disk_log -> read schema.DAT
-    - fallback: record attribute definitions in loaded beam/source
-      files
+        Might be useful if a bare Erlang node is used to run the
+        dataspec probe.
 
 - when showing a type with sub-fields, the columns in the lower tab
   should be Field, Attribute, Type instead of Type, Count (since these
