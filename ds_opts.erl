@@ -83,15 +83,19 @@ getopts() ->
     end.
 
 
-normalize_opts(Opts) -> [do_normalize_opts(Opt, Opts) || Opt <- Opts].
+normalize_opts(Opts) ->
+    lists:filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
 
-do_normalize_opts(Opt, Opts) ->
+normalize_opt_f(Opt, Opts) ->
     [Key] = proplists:get_keys([Opt]),
-    Value0 = getopt(Key, Opts),
-    Value = try normalize_opt(Key, Value0)
-            catch _:_ -> default_opt(Key, Value0)
-            end,
-    proplists:property(Key, Value).
+    Value0 = try getopt(Key, Opts)
+             catch error:badarg -> true % unknown option with no value
+             end,
+    try normalize_opt(Key, Value0)
+    catch _:_ ->
+            Value = default_opt(Key, Value0),
+            {true, proplists:property(Key, Value)}
+    end.
 
 default_opt(Key, Value) ->
     Default = getopt(Key, [Key]),
@@ -99,23 +103,26 @@ default_opt(Key, Value) ->
               [Key, Value, Default]),
     Default.
 
-%% Normalize (change) the value of options;
-%% throw errors or exceptions if data is invalid.
+%% Return true to keep or {true, NewValue} to normalize (change) the value
+%% of options; return false to skip/ignore; throw errors or exceptions if
+%% data is invalid.
 normalize_opt(dump, S) ->
-    true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), S;
+    true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), true;
 normalize_opt(mag, I) ->
-    true = is_integer(I) andalso I >= 0, I;
+    true = is_integer(I) andalso I >= 0, true;
 normalize_opt(progress, P) ->
-    true = (P =:= false) orelse (is_integer(P) andalso P > 0), P;
+    true = (P =:= false) orelse (is_integer(P) andalso P > 0), true;
 normalize_opt(samples, N) ->
-    true = is_integer(N) andalso is_power_of_2(N), N;
+    true = is_integer(N) andalso is_power_of_2(N), true;
 normalize_opt(strlen, B) ->
-    true = is_boolean(B), B;
+    true = is_boolean(B), true;
 normalize_opt(rec_attrs, A) ->
-    true = lists:member(A, [true, false, force]), A;
+    true = lists:member(A, [true, false, force]), true;
 normalize_opt(mnesia_dir, D) ->
-    true = filelib:is_dir(D), D;
-normalize_opt(_Key, Value) -> Value.
+    true = filelib:is_dir(D), true;
+normalize_opt(Key, _Value) ->
+    io:format("** ignoring unknown option: ~p~n", [Key]),
+    false.
 
 is_power_of_2(2) -> true;
 is_power_of_2(N) when N rem 2 =:= 0 -> is_power_of_2(N div 2);
