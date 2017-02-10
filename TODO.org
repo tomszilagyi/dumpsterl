@@ -108,6 +108,54 @@ user-friendly framework for data exploration in NoSQL environments.
   e.g. if it turns out the ts is in gregorian seconds, allow
   user to set fun calendar:gregorian_seconds_to_datetime/1.
 
+** type reductions
+
+The raw end result of the probing stage will reflect the core Erlang
+types (enriched with record information) found in the data.
+
+Before displaying it, we want to reduce the tree with a set of rules
+to yield a more compact representation and push type information
+upwards to the extent practical. All the detail and sub-levels should
+stay available.
+
+Examples:
+
+non_empty_list -> byte
+  becomes:
+[byte] -> byte
+
+non_empty_list -> byte
+               -> tuple,2 -> atom
+                          -> pos_integer -> char
+  becomes:
+[byte | {atom, pos_integer}] -> byte
+                             -> {atom, pos_integer} -> atom
+                                                    -> pos_integer -> char
+
+For the above to work, some rules are needed for generating a textual
+representation of types.
+
+
+also, compound types are discovered:
+
+non_empty_list -> char
+  becomes:
+string -> char
+
+non_empty_list -> atom
+               -> tuple,2 -> atom
+                          -> 'T' -> ...
+  becomes:
+proplist -> atom
+         -> 'T' -> ...
+
+For this, some rules are needed to rename nodes matching a certain
+type signature (self + inferior type nodes)
+
+A declarative, user-editable syntax would be nice.
+That way, the user could add their specific type notations and
+see them in action.
+
 ** test commands
 
 %% whole kcase table with annotations from disk log:
