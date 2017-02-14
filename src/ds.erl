@@ -13,8 +13,6 @@
         , join_up/1
         ]).
 
--include_lib("eunit/include/eunit.hrl").
-
 %% A data spec is a list of type specs.
 %% It is most often hierarchically nested, hence we have
 %% a hierarchical tree of type classes.
@@ -79,22 +77,6 @@ add(VA, {Class, Data0, SubSpec}, SubType) -> % abstract type
 
 update(VA, Class, {Stats, Ext}) ->
     {ds_stats:stats_data(VA, Stats), ds_types:ext_data(VA, Class, Ext)}.
-
--ifdef(discarded).
-%% choose the appropriate subtype based on the filters
-%% in the type hierarchy, or dynamically generate subtype.
-subtype(_VA, []) -> '$null';
-subtype({V,_A}=VA, [{'$dynamic', SubTag, SubFun} | Rest]) ->
-    case SubFun(V) of
-        false -> subtype(VA, Rest);
-        Data  -> {SubTag, Data}
-    end;
-subtype({V,_A}=VA, [{SubType, FilterFun} | Rest]) ->
-    case FilterFun(V) of
-        false -> subtype(VA, Rest);
-        true  -> SubType
-    end.
--endif.
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and return the resulting Spec.

@@ -7,10 +7,9 @@
         , ext_data/3
         ]).
 
--import(ds_opts, [ getopt/1
-                 ]).
-
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% The type hierarchy is defined by types()
 %% - subtypes are mutually exclusive
@@ -101,13 +100,13 @@ subtype(I, char) when I =< 255 -> byte;
 subtype(I, IntType) when IntType =:= pos_integer;
                          IntType =:= non_neg_integer;
                          IntType =:= neg_integer ->
-    case getopt(mag) of
+    case ds_opts:getopt(mag) of
         0 -> '$null';
         N -> {IntType, {mag, mag(I, N)}}
     end;
 
 subtype(F, float) ->
-    case getopt(mag) of
+    case ds_opts:getopt(mag) of
         0 -> '$null';
         N -> {float, {mag, mag(F, N)}}
     end;
@@ -136,7 +135,7 @@ subtype(S, str_printable) ->
     case is_str_alnum(S) of
         true -> str_alnum;
         false ->
-            case getopt(strlen) of
+            case ds_opts:getopt(strlen) of
                 true -> {str_printable, {len, length(S)}};
                 false -> '$null'
             end
@@ -149,7 +148,7 @@ subtype(S, str_alnum) ->
             case is_str_alpha(S) of
                 true -> str_alpha;
                 false ->
-                    case getopt(strlen) of
+                    case ds_opts:getopt(strlen) of
                         true -> {str_alnum, {len, length(S)}};
                         false -> '$null'
                     end
@@ -157,13 +156,13 @@ subtype(S, str_alnum) ->
     end;
 
 subtype(S, str_integer) ->
-    case getopt(strlen) of
+    case ds_opts:getopt(strlen) of
         true -> {str_integer, {len, length(S)}};
         false -> '$null'
     end;
 
 subtype(S, str_alpha) ->
-    case getopt(strlen) of
+    case ds_opts:getopt(strlen) of
         true -> {str_alpha, {len, length(S)}};
         false -> '$null'
     end;
@@ -264,6 +263,7 @@ ext_data_atom({V, Attrs}, Ext) ->
     orddict:store(V, PVS, Ext).
 
 %% Tests
+-ifdef(TEST).
 
 char_in_ranges_test() ->
     ?assertNot(char_in_ranges($A, [])),
@@ -272,3 +272,5 @@ char_in_ranges_test() ->
     ?assert(char_in_ranges($\n, [{$a, $z}, $\n])),
     ?assert(char_in_ranges($A, [{$A, $Z}])),
     ?assert(char_in_ranges($A, [{$A, $Z}, {$a, $z}])).
+
+-endif.
