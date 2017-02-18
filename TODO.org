@@ -99,6 +99,18 @@ user-friendly framework for data exploration in NoSQL environments.
   counts are always all identical to that of the complex type).
   Field is the field number and Attribute is the field name.
 
+*** The true concept of children in the type hierarchy
+
+Children in the type hierarchy are regarded as either
+- alternative subtypes of the current union type;
+- the various parameters of the current type.
+
+Type parameters are the generic concept behind the complex types
+tuple, record, list and more (e.g., maps and dict-like types).
+For example, the improper list has two parameters, the type of
+the list items and the type of the tail item. The tuple type
+has a parameter for each field position.
+
 *** additional gui elements
 - search: allow entering a piece of string, data, etc.
 - toolbar: load, save, generate report, exit, etc.
