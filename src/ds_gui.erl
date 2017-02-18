@@ -18,20 +18,19 @@
 -define(SCROLLBAR_WIDTH,    15).
 
 -record(state,
-        {
-          config,
-          frame,
-          panel_main,
-          panel_left,
-          lc_stack,
-          lc_children,
-          text_children,
-          text_stats,
-          text_ext,
-          zipper,
-          is_complex_type,
-          stack_col_widths,
-          children_col_widths
+        { config
+        , frame
+        , panel_main
+        , panel_left
+        , lc_stack
+        , lc_children
+        , text_children
+        , text_stats
+        , text_ext
+        , zipper
+        , is_complex_type
+        , stack_col_widths
+        , children_col_widths
         }).
 
 start_link() ->
@@ -80,7 +79,7 @@ do_init([Server] = Config) ->
     BottomLeftSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(BottomLeftPanel, BottomLeftSizer),
 
-    TextChildren = wxStaticText:new(BottomLeftPanel, ?wxID_ANY, "Subtype or element list", []),
+    TextChildren = wxStaticText:new(BottomLeftPanel, ?wxID_ANY, "", []),
     wxSizer:add(BottomLeftSizer, TextChildren, []),
 
     LC_Children = wxListCtrl:new(BottomLeftPanel,
@@ -189,7 +188,8 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_stats=TextStats, text_ext=TextExt,
                   zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
-    Stack = ds_zipper:stack(Zipper),
+    Stack0 = ds_zipper:stack(Zipper),
+    Stack = stack_with_parent_refs(Stack0),
     LastIdx = length(Stack)-1,
     StWidths = add_stack(LC_Stack, Stack),
     wxListCtrl:setItemBackgroundColour(LC_Stack, LastIdx, {64, 128, 192}),
@@ -212,10 +212,28 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
 
     State.
 
+%% Enrich the stack items with parent refs for display purposes
+stack_with_parent_refs(Stack) ->
+    Shifted = [{undefined, undefined, undefined} |
+               lists:sublist(Stack, length(Stack)-1)],
+    [{parent_ref(ParentClass, ParentData, Nth), Class, Data} ||
+        {{Class, Nth, Data}, {ParentClass, _PNth, ParentData}}
+            <- lists:zip(Stack, Shifted)].
+
+%% Look up the attributes for the Nth child
+parent_ref(undefined, undefined,_Nth) -> "";
+parent_ref(Class, Data, Nth) ->
+    case ds_types:kind(Class) of
+        complex ->
+            Attrs = ds_types:attributes(Class, Data),
+            "[" ++ ds_types:attribute_to_string(Class, lists:nth(Nth, Attrs)) ++ "]: ";
+        _ -> ""
+    end.
+
 set_child_text(Text, false = _IsComplexType) ->
-    wxStaticText:setLabel(Text, "List of subtypes");
+    wxStaticText:setLabel(Text, "Subtypes:");
 set_child_text(Text, true = _IsComplexType) ->
-    wxStaticText:setLabel(Text, "List of type parameters").
+    wxStaticText:setLabel(Text, "Type parameters:").
 
 child_stack(Zipper, false = _IsComplexType) ->
     ds_zipper:child_list(Zipper);
@@ -256,7 +274,8 @@ adjust_list_cols(#state{panel_left=LeftPanel,
     LastColW = get_last_col_width(StWidths0, ChWidths0),
     {W,_H} = wxWindow:getSize(LeftPanel),
     StWidths = set_stack_cols_width(LC_Stack, StWidths0, W, LastColW),
-    ChWidths = set_children_cols_width(LC_Children, ChWidths0, W, LastColW, IsComplexType),
+    ChWidths = set_children_cols_width(LC_Children, ChWidths0, W, LastColW,
+                                       IsComplexType),
     State#state{stack_col_widths = StWidths,
                 children_col_widths = ChWidths}.
 
@@ -280,7 +299,8 @@ set_children_cols_width(LC, [], TotalW, LastColW, _IsComplexType) ->
     set_stack_cols_width(LC, [C0, LastColW], TotalW, LastColW);
 set_children_cols_width(LC, Ws, TotalW, LastColW, false = _IsComplexType) ->
     set_stack_cols_width(LC, Ws, TotalW, LastColW);
-set_children_cols_width(LC, [C0req, C1req, C2req,_C3req], TotalW, LastColW, true = _IsComplexType) ->
+set_children_cols_width(LC, [C0req, C1req, C2req,_C3req], TotalW, LastColW,
+                        true = _IsComplexType) ->
     RemW = TotalW - C0req - LastColW - ?SCROLLBAR_WIDTH,
     if RemW > 0 ->
             %% Divide RemW between col 1 and 2 in proportion to their need
@@ -304,7 +324,17 @@ add_stack(_LC, [], DC, Acc,_N) ->
     wxWindowDC:destroy(DC),
     Acc;
 add_stack(LC, [{Type, Count}|Rest], DC, Acc0, N) ->
-    TypeStr = ds_types:to_string(Type),
+    TypeStr = ds_types:type_to_string(Type),
+    CountStr = integer_to_list(Count),
+    Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
+    wxListCtrl:insertItem(LC, N, ""),
+    wxListCtrl:setItem(LC, N, 0, TypeStr),
+    wxListCtrl:setItem(LC, N, 1, CountStr),
+    add_stack(LC, Rest, DC, Acc, N+1);
+add_stack(LC, [{ParentRef, Type, Data}|Rest], DC, Acc0, N) ->
+    TypeStr = ParentRef ++ ds_types:type_to_string(Type),
+    {Stats,_Ext} = Data,
+    Count = ds_stats:get_count(Stats),
     CountStr = integer_to_list(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
     wxListCtrl:insertItem(LC, N, ""),
@@ -313,7 +343,7 @@ add_stack(LC, [{Type, Count}|Rest], DC, Acc0, N) ->
     add_stack(LC, Rest, DC, Acc, N+1);
 add_stack(LC, [{No, Attribute, Type, Count}|Rest], DC, Acc0, N) ->
     NoStr = integer_to_list(No),
-    TypeStr = ds_types:to_string(Type),
+    TypeStr = ds_types:type_to_string(Type),
     CountStr = integer_to_list(Count),
     TextWidths = text_widths(DC, [NoStr, Attribute, TypeStr, CountStr]),
     Acc = fold_widths(TextWidths, Acc0),
@@ -329,7 +359,9 @@ text_widths(DC, Cols) ->
 
 text_width(DC, Str) ->
     {W,_H} = wxDC:getTextExtent(DC, Str),
-    W+8. %% FIXME
+    if W  > 0 -> W + 8; %% FIXME
+       W == 0 -> 0
+    end.
 
 fold_widths(Ws, []) -> Ws;
 fold_widths(Ws, Acc) ->
