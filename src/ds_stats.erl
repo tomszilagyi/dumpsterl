@@ -26,14 +26,14 @@
 
 stats_data() -> #stats{}.
 
-stats_data(V, #stats{count = Count,
-                     min_pvs = MinPVS,
-                     max_pvs = MaxPVS,
-                     sample_data = SD}) ->
+stats_data(VA, #stats{count = Count,
+                      min_pvs = MinPVS,
+                      max_pvs = MaxPVS,
+                      sample_data = SD}) ->
     #stats{count = Count+1,
-           min_pvs = update_min(V, MinPVS),
-           max_pvs = update_max(V, MaxPVS),
-           sample_data = sample_data(V, SD)}.
+           min_pvs = update_min(VA, MinPVS),
+           max_pvs = update_max(VA, MaxPVS),
+           sample_data = sample_data(VA, SD)}.
 
 get_count(#stats{count=Count}) -> Count.
 
@@ -101,6 +101,10 @@ update_max({_V,_Attrs}, MaxStats) ->
 %% Per-Value Stats:
 %%   for a given value of interest (eg. min, max), maintain:
 %%   [{count, Count}, {timespan, {{Ts_Min, Key}, {Ts_Max, Key}}}]
+
+%% TODO maybe require a normalized form of Attrs here
+%% (pre-process them in ds_drv) so we can do simple pattern matching
+%% instead of proplists:get_value/2 each time we want ts and key
 pvs_new({_V, Attrs}) ->
     Ts = proplists:get_value(ts, Attrs),
     Key = proplists:get_value(key, Attrs),

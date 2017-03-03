@@ -375,4 +375,4 @@ fold_widths(Ws, Acc) ->
 load_zipper(Filename) ->
     {ok, Bin} = file:read_file(Filename),
     Tree = binary_to_term(Bin),
-    ds_zipper:from_tree(ds:join_up(ds:simplify(Tree))).
+    ds_zipper:from_tree(ds:join_up(ds:compact(Tree))).

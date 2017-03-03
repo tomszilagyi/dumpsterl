@@ -9,7 +9,7 @@
         , new/0
         , new/1
         , new/2
-        , simplify/1
+        , compact/1
         , join_up/1
         ]).
 
@@ -51,15 +51,6 @@ new(Class, Data) -> add(Data, new(Class)).
 
 %% Add the value V with attributes A to Spec.
 %% add/2 is written so it can be used as a function to lists:foldl/3.
-
-%% TODO maybe require a normalized form of A here
-%% (ds_drv to pre-process) so we can do simple pattern matching
-%% instead of orddict:find/2 each time we want ts and key
-
-%% TODO provide attribute 'keep' to signify that a particular
-%% piece of data satisfies certain criteria to be 'interesting'.
-%% This attribute would ensure that the data is kept stored
-%% regardless of sampling allowances.
 add({V,_A}=VA, {Class, Data, SubSpec}) ->
     add(VA, {Class, Data, SubSpec}, ds_types:subtype(V, Class)).
 
@@ -107,23 +98,23 @@ merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
     [ListSpec, TailSpec].
 
 
-%% Cut unnecessary abstract types
+%% Compact the tree by cutting unnecessary abstract types
 %% (those having a single child and no terms captured themselves)
 %% from the tree. E.g. if all terms are tuples of three, the tree
 %%   'T' -> tuple -> {tuple, 3} -> ...
 %% will be simplified to
 %%   {tuple, 3} -> ...
 %% without any loss of information.
-simplify({Class, {Stats,_Ext} = Data, [SubSpec1]}) ->
+compact({Class, {Stats,_Ext} = Data, [SubSpec1]}) ->
     Kind = ds_types:kind(Class),
     Count = ds_stats:get_count(Stats),
     if Kind =/= generic andalso Count =:= 0 ->
-            simplify(SubSpec1);
+            compact(SubSpec1);
        true ->
-            {Class, Data, [simplify(SubSpec1)]}
+            {Class, Data, [compact(SubSpec1)]}
     end;
-simplify({Class, Data, SubSpec}) ->
-    {Class, Data, [simplify(SSp) || SSp <- SubSpec]}.
+compact({Class, Data, SubSpec}) ->
+    {Class, Data, [compact(SSp) || SSp <- SubSpec]}.
 
 %% For performance, abstract type nodes do not update their data
 %% when collecting terms, since the same information will be stored

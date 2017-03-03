@@ -56,6 +56,10 @@ user-friendly framework for data exploration in NoSQL environments.
   - wall clock of start and end
 - support viewing stuff in different formats, e.g. if an integer is
   a flag, it is helpful to be able to switch to a hex/bin view.
+- sampler: provide attribute 'keep' to signify that a particular
+  piece of data satisfies certain criteria to be 'interesting'.
+  This attribute would ensure that the data is kept stored
+  regardless of sampling allowances.
 
 ** GUI browser concept
 - two panes: left for navigation, right for details
