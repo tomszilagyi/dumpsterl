@@ -1,7 +1,7 @@
 -module(ds).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
-%% `dataspec' derives a spec of data based on a stream of values.
+%% `dumpsterl' derives a spec of data based on a stream of values.
 %% It can be used to eg. `discover' the data type stored in a table
 %% (column, etc.)
 

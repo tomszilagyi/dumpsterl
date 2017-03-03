@@ -1,4 +1,4 @@
-%% Driver functions for dataspec
+%% Driver functions for dumpsterl
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

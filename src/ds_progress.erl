@@ -1,4 +1,4 @@
-%% Progress indicator and result dumper for dataspec
+%% Progress indicator and result dumper for dumpsterl
 -module(ds_progress).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -74,7 +74,7 @@ final(#progress{count_recv=Count, start_ts=StartTS}, Acc) ->
               [Count, DeltaT, SpeedStr]),
     Acc.
 
-%% dump the accumulated spec if dataspec is configured to do dumps
+%% dump the accumulated spec if dumpsterl is configured to do dumps
 dump_acc(Acc) ->
     case ds_opts:getopt(dump) of
         false    -> ok;

@@ -1,4 +1,4 @@
-Dataspec rewrite
+Dumpsterl rewrite
 
 The purpose of this rewrite: create a durable, extendable and
 user-friendly framework for data exploration in NoSQL environments.
@@ -95,13 +95,13 @@ user-friendly framework for data exploration in NoSQL environments.
     - default: record attribute definitions in loaded beam/source
       files, read once at the beginning, see rec_attrs in ds_opts.
     - mnesia -> mnesia:table_info(T, attributes)
-        This does not make sense: if dataspec is run on a system where
+        This does not make sense: if dumpsterl is run on a system where
         mnesia is up and running, the code accessing the tables is
         also loaded, so we can get the same info (and more) from the
         beam/source attributes.
     - disk_log -> read schema.DAT
         Might be useful if a bare Erlang node is used to run the
-        dataspec probe.
+        dumpsterl probe.
 
 - when showing a type with sub-fields, the columns in the lower tab
   should be Field, Attribute, Type instead of Type, Count (since these

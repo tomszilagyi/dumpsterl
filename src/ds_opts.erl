@@ -1,4 +1,4 @@
-%% Options handling for dataspec
+%% Options handling for dumpsterl
 
 -module(ds_opts).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
@@ -7,7 +7,7 @@
         , setopts/1
         ]).
 
-%% dataspec operation can be controlled to some extent. Supported options:
+%% dumpsterl operation can be controlled to some extent. Supported options:
 %%
 %% options influencing spec semantics:
 %%
@@ -41,7 +41,7 @@
 %%       Filename: the accumulated spec is dumped as an Erlang binary
 %%         to this filename on each progress tick (dot or number) and
 %%         at the end.
-%%         Defaults to "dataspec.bin" if option is set with no value.
+%%         Defaults to "ds.bin" if option is set with no value.
 %%
 %%   progress: pos_integer() | false
 %%     output progress information and (if dump is enabled) write dumps
@@ -50,7 +50,7 @@
 %%
 %%   mnesia_dir: dirname()
 %%     The name of the mnesia directory where table data files are stored.
-%%     This option is useful if the Erlang node running dataspec does not
+%%     This option is useful if the Erlang node running dumpsterl does not
 %%     run a Mnesia instance where the tables being read belong, but has
 %%     access to the database filesystem.
 
@@ -64,7 +64,7 @@ opts() ->
     %%             also used if supplied value fails to validate)
 
     %% name          undefined     novalue
-    [ {dump,         false,        "dataspec.bin"}
+    [ {dump,         false,        "ds.bin"}
     , {mag,          0,            3}
     , {progress,     false,        100000}
     , {samples,      16,           16}
@@ -74,10 +74,12 @@ opts() ->
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
-setopts(Opts) -> put(dataspec_opts, normalize_opts(Opts)).
+-define(PROCDICT_KEY, dumpsterl_opts).
+
+setopts(Opts) -> put(?PROCDICT_KEY, normalize_opts(Opts)).
 
 getopts() ->
-    case get(dataspec_opts) of
+    case get(?PROCDICT_KEY) of
         undefined -> [];
         Opts      -> Opts
     end.

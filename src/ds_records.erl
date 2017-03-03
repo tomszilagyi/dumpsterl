@@ -3,7 +3,7 @@
 
 -export([init/0, lookup/1]).
 
--define(STORAGE_KEY, dataspec_rec_attrs).
+-define(STORAGE_KEY, dumpsterl_rec_attrs).
 
 init() -> maybe_init(ds_opts:getopt(rec_attrs)).
 

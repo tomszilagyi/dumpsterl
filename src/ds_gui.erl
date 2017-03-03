@@ -45,9 +45,10 @@ init(Config) ->
     wx:batch(fun() -> do_init(Config) end).
 
 do_init([Server] = Config) ->
-    Zipper = load_zipper("dataspec.bin"),
+    Filename = "ds.bin",
+    Zipper = load_zipper("ds.bin"),
 
-    Frame = wxFrame:new(Server, ?wxID_ANY, "Dataspec", []),
+    Frame = wxFrame:new(Server, ?wxID_ANY, "Dumpsterl ["++Filename++"]", []),
     Panel = wxPanel:new(Frame, []),
     Sizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(Panel, Sizer),
