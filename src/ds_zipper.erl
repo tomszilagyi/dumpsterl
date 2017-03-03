@@ -37,8 +37,7 @@ stack([{L,[{Class, Data}|_R]}|Rest], Acc) ->
 
 %% Get the list of classes of children nodes below the current one
 child_list({_Thread, {_L, [{_Class, _Data, {LeftChi, RightChi}}|_R]}}) ->
-    [{Class, ds_stats:get_count(Stats)} ||
-        {Class, {Stats,_Ext}, _Chi} <- lists:reverse(LeftChi) ++ RightChi].
+    [{Class, Data} || {Class, Data, _Chi} <- lists:reverse(LeftChi) ++ RightChi].
 
 %% Move to the left of the current level
 -spec left(zntree()) -> zntree().

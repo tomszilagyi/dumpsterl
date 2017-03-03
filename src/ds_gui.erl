@@ -28,7 +28,7 @@
         , text_stats
         , text_ext
         , zipper
-        , is_complex_type
+        , is_generic_type
         , stack_col_widths
         , children_col_widths
         }).
@@ -195,11 +195,11 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
     wxListCtrl:setItemBackgroundColour(LC_Stack, LastIdx, {64, 128, 192}),
     wxListCtrl:setItemTextColour(LC_Stack, LastIdx, {255, 255, 255}),
 
-    IsComplexType = ds_types:kind(ds_zipper:class(Zipper)) =:= complex,
-    set_child_text(TextChildren, IsComplexType),
-    setup_child_list_cols(LC_Children, IsComplexType),
-    ChWidths = add_stack(LC_Children, child_stack(Zipper, IsComplexType)),
-    State1 = State0#state{is_complex_type=IsComplexType,
+    IsGenericType = ds_types:kind(ds_zipper:class(Zipper)) =:= generic,
+    set_child_text(TextChildren, IsGenericType),
+    setup_child_list_cols(LC_Children, IsGenericType),
+    ChWidths = add_stack(LC_Children, child_stack(Zipper, IsGenericType)),
+    State1 = State0#state{is_generic_type=IsGenericType,
                           stack_col_widths = StWidths,
                           children_col_widths = ChWidths},
     State = adjust_list_cols(State1),
@@ -224,33 +224,37 @@ stack_with_parent_refs(Stack) ->
 parent_ref(undefined, undefined,_Nth) -> "";
 parent_ref(Class, Data, Nth) ->
     case ds_types:kind(Class) of
-        complex ->
+        generic ->
             Attrs = ds_types:attributes(Class, Data),
             "[" ++ ds_types:attribute_to_string(Class, lists:nth(Nth, Attrs)) ++ "]: ";
         _ -> ""
     end.
 
-set_child_text(Text, false = _IsComplexType) ->
+set_child_text(Text, false = _IsGenericType) ->
     wxStaticText:setLabel(Text, "Subtypes:");
-set_child_text(Text, true = _IsComplexType) ->
+set_child_text(Text, true = _IsGenericType) ->
     wxStaticText:setLabel(Text, "Type parameters:").
 
-child_stack(Zipper, false = _IsComplexType) ->
-    ds_zipper:child_list(Zipper);
-child_stack(Zipper, true = _IsComplexType) ->
+child_stack(Zipper, false = _IsGenericType) ->
+    child_list_with_stats(Zipper);
+child_stack(Zipper, true = _IsGenericType) ->
     Class = ds_zipper:class(Zipper),
     Data = ds_zipper:data(Zipper),
     Attributes = ds_types:attributes(Class, Data),
-    ChildList = ds_zipper:child_list(Zipper),
+    ChildList = child_list_with_stats(Zipper),
     true = length(Attributes) == length(ChildList),
     AttChList = lists:zip(Attributes, ChildList),
     [{Field, Attr, Type, Count} || {{Field, Attr}, {Type, Count}} <- AttChList].
 
-setup_child_list_cols(LC, false = _IsComplexType) ->
+child_list_with_stats(Zipper) ->
+    ChildList = ds_zipper:child_list(Zipper),
+    [{Class, ds_stats:get_count(Stats)} || {Class, {Stats,_Ext}} <- ChildList].
+
+setup_child_list_cols(LC, false = _IsGenericType) ->
     delete_items_and_cols(LC),
     wxListCtrl:insertColumn(LC, 0, "Type", []),
     wxListCtrl:insertColumn(LC, 1, "Count", [{format, ?wxLIST_FORMAT_RIGHT}]);
-setup_child_list_cols(LC, true = _IsComplexType) ->
+setup_child_list_cols(LC, true = _IsGenericType) ->
     delete_items_and_cols(LC),
     AlignRight = [{format, ?wxLIST_FORMAT_RIGHT}],
     wxListCtrl:insertColumn(LC, 0, "E", AlignRight),
@@ -266,7 +270,7 @@ delete_items_and_cols(LC) ->
 
 adjust_list_cols(#state{panel_left=LeftPanel,
                         lc_stack=LC_Stack, lc_children=LC_Children,
-                        is_complex_type=IsComplexType,
+                        is_generic_type=IsGenericType,
                         stack_col_widths = StWidths0,
                         children_col_widths = ChWidths0} = State) ->
     %% use the already measured "desired" widths to compute the actual
@@ -275,7 +279,7 @@ adjust_list_cols(#state{panel_left=LeftPanel,
     {W,_H} = wxWindow:getSize(LeftPanel),
     StWidths = set_stack_cols_width(LC_Stack, StWidths0, W, LastColW),
     ChWidths = set_children_cols_width(LC_Children, ChWidths0, W, LastColW,
-                                       IsComplexType),
+                                       IsGenericType),
     State#state{stack_col_widths = StWidths,
                 children_col_widths = ChWidths}.
 
@@ -294,13 +298,13 @@ set_stack_cols_width(LC, [C0req,_C1req], TotalW, LastColW) ->
             [C0req, LastColW]
     end.
 
-set_children_cols_width(LC, [], TotalW, LastColW, _IsComplexType) ->
+set_children_cols_width(LC, [], TotalW, LastColW, _IsGenericType) ->
     C0 = TotalW - LastColW - ?SCROLLBAR_WIDTH,
     set_stack_cols_width(LC, [C0, LastColW], TotalW, LastColW);
-set_children_cols_width(LC, Ws, TotalW, LastColW, false = _IsComplexType) ->
+set_children_cols_width(LC, Ws, TotalW, LastColW, false = _IsGenericType) ->
     set_stack_cols_width(LC, Ws, TotalW, LastColW);
 set_children_cols_width(LC, [C0req, C1req, C2req,_C3req], TotalW, LastColW,
-                        true = _IsComplexType) ->
+                        true = _IsGenericType) ->
     RemW = TotalW - C0req - LastColW - ?SCROLLBAR_WIDTH,
     if RemW > 0 ->
             %% Divide RemW between col 1 and 2 in proportion to their need

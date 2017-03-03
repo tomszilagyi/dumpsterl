@@ -20,7 +20,7 @@ user-friendly framework for data exploration in NoSQL environments.
   - key (to read back the whole record)
 
 ** ideas for development
-- add complex types to the type hierarchy, eg.
+- add generic types to the type hierarchy, eg.
   - {list_of, T} dynamic type where a list has elements of the same type
   - commonly used complex types e.g. proplist
 - cut intermediary stages of the hierarchy, e.g. if they are all
@@ -36,6 +36,8 @@ user-friendly framework for data exploration in NoSQL environments.
 - parallelize: send data to N trees in round-robin fashion, merge
   results regularly for each chunk or at the end
   (N > number of processors)
+- provide some way to gracefully interrupt the probe without killing
+  the Erlang shell (start our own mini-shell in the Erlang shell!)
 - read schema.DAT to learn about record fields
 - treat dict types similar to tuples/records, where the keys
   correspond to field names (with the notable exception that not all
@@ -47,6 +49,13 @@ user-friendly framework for data exploration in NoSQL environments.
   number of unique values shown. Instead, for each collected value,
   maintain per-value stats to show how it is distributed across the
   population.
+- when dumping, also dump metadata (apart from the spec itself):
+  - the progress information (total items traversed so far). May be
+    more than the count in the Stats of 'T' in case of skipped items.
+  - options used for the run
+  - wall clock of start and end
+- support viewing stuff in different formats, e.g. if an integer is
+  a flag, it is helpful to be able to switch to a hex/bin view.
 
 ** GUI browser concept
 - two panes: left for navigation, right for details
@@ -103,9 +112,9 @@ user-friendly framework for data exploration in NoSQL environments.
 
 Children in the type hierarchy are regarded as either
 - alternative subtypes of the current union type;
-- the various parameters of the current type.
+- the various parameters of the current generic type.
 
-Type parameters are the generic concept behind the complex types
+Type parameters are the concept behind the generic types of
 tuple, record, list and more (e.g., maps and dict-like types).
 For example, the improper list has two parameters, the type of
 the list items and the type of the tail item. The tuple type
@@ -119,6 +128,8 @@ has a parameter for each field position.
 - manually supply timestamp format function
   e.g. if it turns out the ts is in gregorian seconds, allow
   user to set fun calendar:gregorian_seconds_to_datetime/1.
+- allow opening and viewing multiple specs perhaps as part
+  of a MDI windowing solution (wx: aui)
 
 ** type reductions
 

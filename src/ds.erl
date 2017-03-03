@@ -49,10 +49,10 @@ new(Class) ->
 %% Initialize, immediately adding one data term
 new(Class, Data) -> add(Data, new(Class)).
 
-%% Add the value V to Spec. add/2 is written so it can be
-%% used as a function to lists:foldl/3.
+%% Add the value V with attributes A to Spec.
+%% add/2 is written so it can be used as a function to lists:foldl/3.
 
-%% TODO maybe require V to have a normalized Attrs here
+%% TODO maybe require a normalized form of A here
 %% (ds_drv to pre-process) so we can do simple pattern matching
 %% instead of orddict:find/2 each time we want ts and key
 
@@ -117,7 +117,7 @@ merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
 simplify({Class, {Stats,_Ext} = Data, [SubSpec1]}) ->
     Kind = ds_types:kind(Class),
     Count = ds_stats:get_count(Stats),
-    if Kind =/= complex andalso Count =:= 0 ->
+    if Kind =/= generic andalso Count =:= 0 ->
             simplify(SubSpec1);
        true ->
             {Class, Data, [simplify(SubSpec1)]}
@@ -133,7 +133,7 @@ simplify({Class, Data, SubSpec}) ->
 join_up({Class, Data0, SubSpec0}) ->
     SubSpec = [join_up(SSp) || SSp <- SubSpec0],
     Data = case ds_types:kind(Class) of
-               complex -> Data0; % don't cross type domains with the join
+               generic -> Data0; % don't cross type domains with the join
                _       -> join_data(Data0, SubSpec)
            end,
     {Class, Data, SubSpec}.

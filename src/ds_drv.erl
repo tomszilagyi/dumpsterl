@@ -13,7 +13,9 @@
         , fold_disk_log/5
         ]).
 
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Go through a table to spec a field based on a limited number
 %% of rows processed:
@@ -153,14 +155,22 @@ fold_kernel(Fun, Acc0, RecL, {FieldSpec, AttrSpecs}) ->
     FoldF =
         fun(Rec, FoldAcc) ->
             %% The element accessor might crash or throw an error
-            %% to exclude this instance from the spec.
+            %% which will exclude this instance from the spec.
             try Field = elem(FieldSpec, Rec),
-                 Attrs = [{Attr, elem(AttrSpec, Rec)} || {Attr, AttrSpec} <- AttrSpecs],
-                 Fun({Field, Attrs}, FoldAcc)
+                Attrs = attrs(AttrSpecs, Rec),
+                Fun({Field, Attrs}, FoldAcc)
             catch _:_ -> FoldAcc
             end
         end,
     lists:foldl(FoldF, Acc0, RecL).
+
+%% If an attribute cannot be obtained via elem/2, just ignore it.
+attrs(AttrSpecs, Rec) ->
+    lists:foldl(fun({Attr, Spec}, Acc) ->
+                    try [{Attr, elem(Spec, Rec)}|Acc]
+                    catch _:_ -> Acc
+                    end
+                end, [], AttrSpecs).
 
 elem(0, Rec) -> Rec;
 elem(F, Rec) when is_integer(F) -> element(F, Rec);
@@ -178,3 +188,51 @@ normalize_spec(Spec) -> throw({error, {invalid_spec, Spec}}).
 %% decrement counters that might be disabled by being set to an atom
 counter_dec(N, C) when is_integer(N) -> max(0, N-C);
 counter_dec(A,_C)                    -> A.
+
+
+%% Tests
+-ifdef(TEST).
+
+%% This test demonstrates various supported styles of field access
+elem_test() ->
+    SubRec = {subrec, a, b, c, d},
+    Rec = {rec, field1, SubRec, field3},
+
+    %% spec returning the whole record
+    ?assertEqual(Rec, elem(0, Rec)),
+    ?assertEqual(Rec, elem([], Rec)),
+
+    %% simple integer index spec (useful with #record.field notation)
+    ?assertEqual(field1, elem(2, Rec)),
+
+    %% spec with accessor fun
+    FieldSpecF = fun({rec,_F1, F2,_F3}) -> F2 end,
+    ?assertEqual(SubRec, elem(FieldSpecF, Rec)),
+
+    %% chained spec
+    ?assertEqual(d, elem([3, 5], Rec)),
+
+    %% chain may also contain accessor funs
+    ?assertEqual(a, elem([FieldSpecF, 2], Rec)),
+
+    %% If the accessor fails, we get different errors
+    ?assertError(badarg, elem(5, Rec)),
+    ?assertError(function_clause, elem(FieldSpecF, {smallrec, 1})).
+
+
+attr_test() ->
+    Rec1 = {rec, {35, 20170309}, data, etc},
+    Rec2 = {rec, undefined, more_data, etc},
+
+    KeySpec = {key, [2, 1]},
+    TsSpec  = {ts, [2, 2]},
+    AuxSpec = {aux, 3},
+    AttrSpecs = [AuxSpec, KeySpec, TsSpec],
+    ?assertEqual([ {ts, 20170309}
+                 , {key, 35}
+                 , {aux, data}], attrs(AttrSpecs, Rec1)),
+
+    %% ignore missing attributes:
+    ?assertEqual([{aux, more_data}], attrs(AttrSpecs, Rec2)).
+
+-endif.

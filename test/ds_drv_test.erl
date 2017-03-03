@@ -25,10 +25,6 @@ spec_test_util(Tid, N) ->
        [{integer, _,
         [{non_neg_integer, _,
          [{pos_integer, {Stats0, _Ext0}, _}]}]}]}]} = Spec0,
-    Bug = N > ds_stats:get_count(Stats0),
-    if Bug -> io:format(user, "Spec: ~p~n", [Spec0]);
-       true -> ok
-    end,
     ?assertEqual(N, ds_stats:get_count(Stats0)),
 
     Spec1 = ?M:spec_tab(ets, Tid, #rec_test.value1, 1000),

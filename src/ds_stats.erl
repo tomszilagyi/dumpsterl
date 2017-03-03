@@ -13,11 +13,9 @@
         , join/2
         ]).
 
--import(ds_opts, [ getopt/1
-                 , setopts/1
-                 ]).
-
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% general per-node statistics data
 -record(stats, { count = 0,
@@ -62,20 +60,26 @@ join_pvs({min, Min, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
                 {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
 join_pvs({min, M0, PVS0}, {min, M1,_PVS1}) when M0 < M1 -> {min, M0, PVS0};
 join_pvs({min, M0,_PVS0}, {min, M1, PVS1}) when M0 > M1 -> {min, M1, PVS1};
+join_pvs({min, M0, PVS0}, {min, M1, PVS1}) when M0 == M1 ->
+    %% float and int with same value
+    join_pvs({min, round(M0), PVS0}, {min, round(M1), PVS1});
 
 join_pvs({max, Max, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
          {max, Max, [{count, Count1}, {timespan, TSpMin1, TSpMax1}]}) ->
     {max, Max, [{count, Count0+Count1},
                 {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
 join_pvs({max, M0, PVS0}, {max, M1,_PVS1}) when M0 > M1 -> {max, M0, PVS0};
-join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1}.
+join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1};
+join_pvs({max, M0, PVS0}, {max, M1, PVS1}) when M0 == M1 ->
+    %% float and int with same value
+    join_pvs({max, round(M0), PVS0}, {max, round(M1), PVS1}).
 
 
 update_min({V, Attrs}, undefined) ->
     {min, V, pvs_new({V, Attrs})};
 update_min({V, Attrs}, {min, Min,_MinPVS0}) when V < Min ->
     {min, V, pvs_new({V, Attrs})};
-update_min({V, Attrs}, {min, Min, MinPVS0}) when V =:= Min ->
+update_min({V, Attrs}, {min, Min, MinPVS0}) when V == Min ->
     {min, V, pvs_add({V, Attrs}, MinPVS0)};
 update_min({_V,_Attrs}, MinStats) ->
     MinStats.
@@ -84,7 +88,7 @@ update_max({V, Attrs}, undefined) ->
     {max, V, pvs_new({V, Attrs})};
 update_max({V, Attrs}, {max, Max,_MaxPVS0}) when V > Max ->
     {max, V, pvs_new({V, Attrs})};
-update_max({V, Attrs}, {max, Max, MaxPVS0}) when V =:= Max ->
+update_max({V, Attrs}, {max, Max, MaxPVS0}) when V == Max ->
     {max, V, pvs_add({V, Attrs}, MaxPVS0)};
 update_max({_V,_Attrs}, MaxStats) ->
     MaxStats.
@@ -128,11 +132,11 @@ pvs_add({_V, Attrs}, [{count, Count}, {timespan, TSpMin0, TSpMax0}]) ->
 
 sample_data() ->
     %% divisor, n_received, size, capacity, sample_data
-    {0, 0, 0, getopt(samples), []}.
+    {0, 0, 0, ds_opts:getopt(samples), []}.
 
 sample_data(Data) ->
     %% divisor, n_received, size, capacity, sample_data
-    {0, 1, 1, getopt(samples), [Data]}.
+    {0, 1, 1, ds_opts:getopt(samples), [Data]}.
 
 sample_data(_Data, {Div, N, Size, Cap, Samples}) when (N+1) band Div =/= 0 ->
     {Div, N+1, Size, Cap, Samples};
@@ -158,6 +162,7 @@ get_samples({_Div,_N,_Size,_Cap, Samples}) -> Samples.
 
 
 %% Tests
+-ifdef(TEST).
 
 drop2_test() ->
     ?assertEqual([],        drop2([])),
@@ -169,7 +174,7 @@ drop2_test() ->
     ?assertEqual([1, 3, 5], drop2([1, 2, 3, 4, 5, 6])).
 
 sample_data_test() ->
-    setopts([{samples, 8}]),
+    ds_opts:setopts([{samples, 8}]),
     SD10 = sample_data(1),
     ?assertEqual(SD10, sample_data(1, sample_data())),
     SD11 = lists:foldl(fun sample_data/2, SD10, lists:seq(2, 8)),
@@ -181,7 +186,7 @@ sample_data_test() ->
     SD14 = lists:foldl(fun sample_data/2, SD13, lists:seq(33, 64)),
     ?assertEqual({7,64,8,8,[64,56,48,40,32,24,16,8]}, SD14),
 
-    setopts([{samples, 16}]),
+    ds_opts:setopts([{samples, 16}]),
     SD20 = sample_data(1),
     SD21 = lists:foldl(fun sample_data/2, SD20, lists:seq(2, 16)),
     ?assertEqual({0,16,16,16,[16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]}, SD21),
@@ -193,3 +198,5 @@ sample_data_test() ->
     ?assertEqual({7,128,16,16,[128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8]}, SD24),
 
     ?assertEqual([128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8], get_samples(SD24)).
+
+-endif.

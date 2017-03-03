@@ -62,20 +62,23 @@ types() ->
 %% Category, or "kind", of type.
 %% Each type belongs to one of three kinds:
 %% - abstract: a type which can be broken into subtypes;
-%% - complex:  a type which is a leaf type, but can be broken down
-%%             into elements e.g. lists, tuples, records;
+%% - generic:  a type which is parameterized by further types.
+%%             E.g. a list is really a list of T where T is the type
+%%             of all its elements.
+%%             Generic types include lists, tuples, records.
 %% - leaf:     a leaf type with no further sub-categorization.
 %%
 %% For abstract types, the node's SubSpec is a list of subtypes;
-%% for complex types, SubSpec is a list of type specs that map to
-%% the individual elements. In other words, those are leaf nodes
-%% from a type hierarchy point of view; their children belong to
-%% another type.
-kind(nonempty_list) -> complex;
-kind(improper_list) -> complex;
-kind({tuple, _})    -> complex;
-kind({record, _})   -> complex;
-kind(_T) -> abstract.
+%% for generic types, SubSpec is a list of type specs that map to
+%% the individual type elements. In other words, those are leaf nodes
+%% from a strict type hierarchy point of view, since their children
+%% belong to another type domain.
+kind(nonempty_list) -> generic;
+kind(improper_list) -> generic;
+kind({tuple, _})    -> generic;
+kind({record, _})   -> generic;
+kind(_T) -> abstract. %% incomplete for now, but we only really care
+%% about the difference between generic and non-generic types.
 
 %% Convert type to a string representing it in a GUI.
 type_to_string({record, {RecName, RecSize}}) ->
@@ -85,7 +88,7 @@ type_to_string({tuple, Size}) ->
 type_to_string(Type) ->
     io_lib:format("~p", [Type]).
 
-%% For complex types, this function returns a list of attributes.
+%% For generic types, this function returns a list of attributes.
 %% The list contains {No, Attribute} tuples, where No is an integer
 %% and Attribute is a (possibly empty) string.
 %% NB. In case of records, the fields are numbered from 2.
@@ -158,7 +161,7 @@ subtype(L, list) ->
     end;
 
 subtype(L, nonempty_list) -> {'$elements', L};
-    %% %% FIXME can't have a complex type with potential subtype!
+    %% %% FIXME can't have a generic type with potential subtype!
     %% case is_str_printable(L) of
     %%     true -> str_printable;
     %%     false -> {'$elements', L}
