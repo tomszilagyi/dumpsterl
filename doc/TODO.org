@@ -188,3 +188,5 @@ see them in action.
 %% whole kcase table with annotations from disk log:
 ds_drv:spec_disk_log("/kred/live/system/db/kcase.DCD", {0, [{ts, #kcase.create_date}, {key, #kcase.cid}]}, inf, [{progress, 10000}, {dump, "/tmp/ds.bin"}]).
 
+%% local test
+ds_drv:spec_disk_log("kred_data/kcase.DCD", {0, [{ts, 3}, {key, 2}]}, 1000000, [{progress, 10000}, dump, {mnesia_dir, "kred_data"}]).
