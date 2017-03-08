@@ -122,7 +122,26 @@ Type parameters are the concept behind the generic types of
 tuple, record, list and more (e.g., maps and dict-like types).
 For example, the improper list has two parameters, the type of
 the list items and the type of the tail item. The tuple type
-has a parameter for each field position.
+has a parameter for each field position. The map type has a parameter
+for each unique key ever seen in any map instance in that position.
+
+*** map support
+
+Maps are a generic type. Attributes of a map are the transitive union
+set of keys seen in any instance.
+
+Representing a map node in the spec:
+- Children contain specs for each attribute;
+- Ext contains the attribute spec, that is:
+  [{1, Key1}, {2, Key2}, ...]
+  names in the same order as Children.
+
+We don't want the map size to be part of its spec, because map
+instances occurring in the same position could easily contain optional
+keys not found in other instances. We want to keep fragmentation of
+the spec to a minimum.  Differing counts of key occurrences will be
+reflected by the counters of each child spec, reflected by the Count
+column of the type parameter listing in the gui.
 
 *** additional gui elements
 - search: allow entering a piece of string, data, etc.

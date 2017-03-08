@@ -129,6 +129,9 @@ subtype(V, 'T') when is_list(V) -> list;
 subtype(V, 'T') when is_tuple(V) -> tuple;
 subtype(V, 'T') when is_binary(V) -> binary;
 
+subtype(true, atom) -> boolean;
+subtype(false, atom) -> boolean;
+
 subtype(N, number) when is_integer(N) -> integer;
 subtype(N, number) when is_float(N) -> float;
 
@@ -294,6 +297,7 @@ ext_data(_Class) -> [].
 
 %% class-specific per-term updaters
 ext_data(VA, atom, Ext) -> ext_data_atom(VA, Ext);
+ext_data(VA, nonempty_list, Ext) -> ext_data_nonempty_list(VA, Ext);
 ext_data(_V,_Class, Ext) -> Ext.
 
 
@@ -304,6 +308,10 @@ ext_data_atom({V, Attrs}, Ext) ->
               {ok, PVS0} -> ds_stats:pvs_add({V, Attrs}, PVS0)
           end,
     orddict:store(V, PVS, Ext).
+
+%% For lists, maintain a histogram of lengths
+ext_data_nonempty_list({V,_Attrs}, Ext) ->
+    orddict:update_counter(length(V), 1, Ext).
 
 %% Tests
 -ifdef(TEST).
