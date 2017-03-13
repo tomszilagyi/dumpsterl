@@ -1,16 +1,16 @@
 -module(ds_stats).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ stats_data/0
-        , stats_data/2
+-export([ new/0
+        , add/2
+        , join/2
+        , get_count/1
+
+        %% These will be removed/delegated elsewhere
         , sample_data/0
         , sample_data/1
         , sample_data/2
-        , get_count/1
         , get_samples/1
-        , pvs_new/1
-        , pvs_add/2
-        , join/2
         ]).
 
 -ifdef(TEST).
@@ -24,12 +24,12 @@
                  sample_data = sample_data()
                }).
 
-stats_data() -> #stats{}.
+new() -> #stats{}.
 
-stats_data(VA, #stats{count = Count,
-                      min_pvs = MinPVS,
-                      max_pvs = MaxPVS,
-                      sample_data = SD}) ->
+add(VA, #stats{count = Count,
+               min_pvs = MinPVS,
+               max_pvs = MaxPVS,
+               sample_data = SD}) ->
     #stats{count = Count+1,
            min_pvs = update_min(VA, MinPVS),
            max_pvs = update_max(VA, MaxPVS),
@@ -51,74 +51,40 @@ join(#stats{count = Count0,
            max_pvs = join_pvs(MaxPVS0, MaxPVS1),
            sample_data = join_sample_data(SD0, SD1)}.
 
+
 join_pvs(undefined, PVS) -> PVS;
 join_pvs(PVS, undefined) -> PVS;
 
-join_pvs({min, Min, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
-         {min, Min, [{count, Count1}, {timespan, TSpMin1, TSpMax1}]}) ->
-    {min, Min, [{count, Count0+Count1},
-                {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
+join_pvs({min, M0, PVS0}, {min, M1, PVS1}) when M0 == M1 ->
+    %% Use '==' in guard in case M0 and M1 are float and int with same value
+    {min, M0, ds_pvattrs:join(PVS0, PVS1)};
 join_pvs({min, M0, PVS0}, {min, M1,_PVS1}) when M0 < M1 -> {min, M0, PVS0};
 join_pvs({min, M0,_PVS0}, {min, M1, PVS1}) when M0 > M1 -> {min, M1, PVS1};
-join_pvs({min, M0, PVS0}, {min, M1, PVS1}) when M0 == M1 ->
-    %% float and int with same value
-    join_pvs({min, round(M0), PVS0}, {min, round(M1), PVS1});
 
-join_pvs({max, Max, [{count, Count0}, {timespan, TSpMin0, TSpMax0}]},
-         {max, Max, [{count, Count1}, {timespan, TSpMin1, TSpMax1}]}) ->
-    {max, Max, [{count, Count0+Count1},
-                {timespan, min(TSpMin0, TSpMin1), max(TSpMax0, TSpMax1)}]};
-join_pvs({max, M0, PVS0}, {max, M1,_PVS1}) when M0 > M1 -> {max, M0, PVS0};
-join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1};
 join_pvs({max, M0, PVS0}, {max, M1, PVS1}) when M0 == M1 ->
-    %% float and int with same value
-    join_pvs({max, round(M0), PVS0}, {max, round(M1), PVS1}).
+    %% Use '==' in guard in case M0 and M1 are float and int with same value
+    {max, M0, ds_pvattrs:join(PVS0, PVS1)};
+join_pvs({max, M0, PVS0}, {max, M1,_PVS1}) when M0 > M1 -> {max, M0, PVS0};
+join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1}.
 
 
 update_min({V, Attrs}, undefined) ->
-    {min, V, pvs_new({V, Attrs})};
+    {min, V, ds_pvattrs:new(Attrs)};
 update_min({V, Attrs}, {min, Min,_MinPVS0}) when V < Min ->
-    {min, V, pvs_new({V, Attrs})};
+    {min, V, ds_pvattrs:new(Attrs)};
 update_min({V, Attrs}, {min, Min, MinPVS0}) when V == Min ->
-    {min, V, pvs_add({V, Attrs}, MinPVS0)};
+    {min, V, ds_pvattrs:add(Attrs, MinPVS0)};
 update_min({_V,_Attrs}, MinStats) ->
     MinStats.
 
 update_max({V, Attrs}, undefined) ->
-    {max, V, pvs_new({V, Attrs})};
+    {max, V, ds_pvattrs:new(Attrs)};
 update_max({V, Attrs}, {max, Max,_MaxPVS0}) when V > Max ->
-    {max, V, pvs_new({V, Attrs})};
+    {max, V, ds_pvattrs:new(Attrs)};
 update_max({V, Attrs}, {max, Max, MaxPVS0}) when V == Max ->
-    {max, V, pvs_add({V, Attrs}, MaxPVS0)};
+    {max, V, ds_pvattrs:add(Attrs, MaxPVS0)};
 update_max({_V,_Attrs}, MaxStats) ->
     MaxStats.
-
-%% General per-value statistics keeping track of
-%% - count of values seen
-%% - approx count of unique values (hyperloglog?)
-%% - time span of values annotated with keys
-
-%% Per-Value Stats:
-%%   for a given value of interest (eg. min, max), maintain:
-%%   [{count, Count}, {timespan, {{Ts_Min, Key}, {Ts_Max, Key}}}]
-
-%% TODO maybe require a normalized form of Attrs here
-%% (pre-process them in ds_drv) so we can do simple pattern matching
-%% instead of proplists:get_value/2 each time we want ts and key
-pvs_new({_V, Attrs}) ->
-    Ts = proplists:get_value(ts, Attrs),
-    Key = proplists:get_value(key, Attrs),
-    [ {count, 1}
-    , {timespan, {Ts, Key}, {Ts, Key}}
-    ].
-
-pvs_add({_V, Attrs}, [{count, Count}, {timespan, TSpMin0, TSpMax0}]) ->
-    Ts = proplists:get_value(ts, Attrs),
-    Key = proplists:get_value(key, Attrs),
-    [ {count, Count+1}
-    , {timespan, min(TSpMin0, {Ts, Key}), max(TSpMax0, {Ts, Key})}
-    ].
-
 
 %% sample_data:
 %%

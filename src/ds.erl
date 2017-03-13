@@ -43,7 +43,7 @@
 new() -> new('T').
 
 new(Class) ->
-    Data = {ds_stats:stats_data(), ds_types:ext_data(Class)},
+    Data = {ds_stats:new(), ds_types:ext_data(Class)},
     {Class, Data, []}.
 
 %% Initialize, immediately adding one data term
@@ -67,7 +67,7 @@ add(VA, {Class, Data0, SubSpec}, SubType) -> % abstract type
     {Class, Data0, merge(VA, SubType, SubSpec)}.
 
 update(VA, Class, {Stats, Ext}) ->
-    {ds_stats:stats_data(VA, Stats), ds_types:ext_data(VA, Class, Ext)}.
+    {ds_stats:add(VA, Stats), ds_types:ext_data(VA, Class, Ext)}.
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and return the resulting Spec.

@@ -5,9 +5,10 @@
 %% See the following paper for a description of the algorithm:
 %% http://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf
 
--export([ init/1
+-export([ new/1
         , add/2
         , add_hash/2
+        , join/2
         , estimate/1
         , error_est/1
         ]).
@@ -26,13 +27,14 @@
         }).
 
 %% Initialize a HyperLogLog cardinality estimator.
-init(B) when is_integer(B), B >= 4, B =< 16 ->
+new(B) when is_integer(B), B >= 4, B =< 16 ->
     M = 1 bsl B,
     Dw = 32 - B,
     Dmask = 1 bsl Dw - 1,
     Regs = erlang:make_tuple(M, 0),
     #hyperloglog{b = B, m = M, dw = Dw, dmask = Dmask, regs = Regs};
-init(T) -> error(badarg, [T]).
+new(T) ->
+    error(badarg, [T]).
 
 %% Add a new term to the HyperLogLog cardinality estimator.
 add(T, HyperLogLog) ->
@@ -43,7 +45,7 @@ add(T, HyperLogLog) ->
 %% This function is provided as an entry point in case you have already
 %% hashed your terms with a suitable function and want to spare another
 %% hash computation. In this case, please make sure to use a suitable
-%% hash function (erlang:phash2 with the Range set to 2^32 is recommended).
+%% hash function (erlang:phash2 with Range set to 2^32 is recommended).
 %% In case of doubt, just use add/2 above.
 add_hash(Hash, #hyperloglog{b = B, dw = Dw, dmask = Dmask,
                             regs = Regs0} = HyperLogLog) ->
@@ -52,6 +54,15 @@ add_hash(Hash, #hyperloglog{b = B, dw = Dw, dmask = Dmask,
     Sigma = sigma(Data) - B, % leading zeros in Data only, not all 32 bits
     Regs = setelement(Index, Regs0, max(Sigma, element(Index, Regs0))),
     HyperLogLog#hyperloglog{regs = Regs}.
+
+%% Two instances may be joined only if they are of the same parameter
+join(#hyperloglog{b = B, regs = Regs1} = HLL,
+     #hyperloglog{b = B, regs = Regs2}) ->
+    RegsZL = lists:zip(tuple_to_list(Regs1), tuple_to_list(Regs2)),
+    Regs = list_to_tuple([max(R1, R2) || {R1, R2} <- RegsZL]),
+    HLL#hyperloglog{regs = Regs};
+join(HLL1, HLL2) ->
+    error(badarg, [HLL1, HLL2]).
 
 estimate(#hyperloglog{m = M, regs = Regs} = HyperLogLog) ->
     E = raw_e(HyperLogLog),
@@ -216,16 +227,16 @@ sigma(0)                    -> 33.
 %% Tests
 -ifdef(TEST).
 
-init_test() ->
-    ?assertError(badarg, init(3)),
-    ?assertError(badarg, init(17)),
-    ?assertError(badarg, init(nan)),
+new_test() ->
+    ?assertError(badarg, new(3)),
+    ?assertError(badarg, new(17)),
+    ?assertError(badarg, new(nan)),
     ?assertEqual(#hyperloglog{b=4, m=16, dw=28, dmask=1 bsl 28 - 1,
                               regs=erlang:make_tuple(16, 0)},
-                 init(4)),
+                 new(4)),
     ?assertEqual(#hyperloglog{b=5, m=32, dw=27, dmask=1 bsl 27 - 1,
                               regs=erlang:make_tuple(32, 0)},
-                 init(5)).
+                 new(5)).
 
 sigma_test() ->
     LeadingZerosF =
@@ -246,7 +257,7 @@ sigma_test_loop(VerifF, Count) ->
 
 hyperloglog_test() ->
     Count = 10000,
-    HLL = lists:foldl(fun add/2, init(9),
+    HLL = lists:foldl(fun add/2, new(9),
                       [test_value(N) || N <- lists:seq(1, Count)]),
     AbsError = abs(Count - estimate(HLL)) / Count,
     ?assert(AbsError =< error_est(HLL)).
@@ -254,16 +265,28 @@ hyperloglog_test() ->
 duplicates_test() ->
     Count = 25000,
     Unique = 600,
-    HLL = lists:foldl(fun add/2, init(9),
+    HLL = lists:foldl(fun add/2, new(9),
                       [test_value(N rem Unique) || N <- lists:seq(1, Count)]),
     AbsError = abs(Unique - estimate(HLL)) / Count,
+    ?assert(AbsError =< error_est(HLL)).
+
+join_test() ->
+    %% Two estimators fed with halfway overlapping sets, then joined
+    %% results in the union set being counted once and only once.
+    Start1 = 1,    End1 = 10000,
+    Start2 = 5001, End2 = 15000,
+    HLL1 = lists:foldl(fun add/2, new(9),
+                       [test_value(N) || N <- lists:seq(Start1, End1)]),
+    HLL2 = lists:foldl(fun add/2, new(9),
+                       [test_value(N) || N <- lists:seq(Start2, End2)]),
+    HLL = join(HLL1, HLL2),
+    AbsError = abs(End2 - estimate(HLL)) / End2,
     ?assert(AbsError =< error_est(HLL)).
 
 %% Print a nice table of hyperloglog estimator performance.
 %% This is not part of the EUnit tests, must be run manually.
 print_table() ->
-    random:seed(erlang:now()),
-    HLLs0 = [init(B) || B <- lists:seq(4, 16)],
+    HLLs0 = [new(B) || B <- lists:seq(4, 16)],
     AddF = fun(E, HLLs) -> [add(E, HLL) || HLL <- HLLs] end,
 
     io:format(user, "~n       m:", []),
