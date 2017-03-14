@@ -7,6 +7,10 @@
         , setopts/1
         ]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% dumpsterl operation can be controlled to some extent. Supported options:
 %%
 %% options influencing spec semantics:
@@ -146,3 +150,41 @@ getopt(Opt, Opts) ->
         true      -> element(3, lists:keyfind(Opt, 1, opts()));
         Value     -> Value
     end.
+
+
+%% Tests
+-ifdef(TEST).
+
+undefined_test() ->
+    [?assertEqual(UndefValue, getopt(Name, [])) ||
+        {Name, UndefValue, _NoValue} <- opts()].
+
+novalue_test() ->
+    [?assertEqual(NoValue, getopt(Name, [Name])) ||
+        {Name, _UndefValue, NoValue} <- opts()].
+
+unknown_option_test() ->
+    ?assertError(badarg, getopt(no_such_option, [])),
+    ?assertEqual([], normalize_opts([no_such_option])).
+
+bad_value_test() ->
+    %% A value that fails to validate is equivalent to supplying the
+    %% option without a value.
+    ?assertEqual([{rec_attrs, getopt(rec_attrs, [rec_attrs])}],
+                 normalize_opts([{rec_attrs, {12345, invalid_value}}])),
+    ?assertEqual([{mnesia_dir, getopt(mnesia_dir, [mnesia_dir])}],
+                 normalize_opts([{mnesia_dir, this_is_not_a_dir}])).
+
+normalize_opts_test() ->
+    Opts = normalize_opts([ {samples, 100}
+                          , dump
+                          , {no, [such], <<"option">>}
+                          , {mnesia_dir, "."}
+                          , hll_b
+                          ]),
+    ?assertEqual(100, getopt(samples, Opts)),
+    ?assertEqual("ds.bin", getopt(dump, Opts)),
+    ?assertEqual(".", getopt(mnesia_dir, Opts)),
+    ?assertEqual(8, getopt(hll_b, Opts)).
+
+-endif.
