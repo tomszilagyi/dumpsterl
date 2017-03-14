@@ -11,6 +11,10 @@
 %%
 %% options influencing spec semantics:
 %%
+%%   hll_b : false | integer() between 4 and 16
+%%     parameter 'b' (bit size of substream count) of hyperloglog
+%%     cardinality estimator
+%%
 %%   mag: integer()
 %%     subgrouping of numerals by magnitude
 %%       0: turn off subgrouping;
@@ -26,8 +30,8 @@
 %%              NB. just including rec_attrs (with no value) in the
 %%              options list is equivalent to {rec_attrs, force}.
 %%
-%%   samples: N (must be an integer power of 2)
-%%       sample buffer size for collecting example data
+%%   samples: false | N (positive integer)
+%%       maximum number of samples to collect (per node)
 %%
 %%   strlen: true | false
 %%     subgrouping of strings by length
@@ -65,6 +69,7 @@ opts() ->
 
     %% name          undefined     novalue
     [ {dump,         false,        "ds.bin"}
+    , {hll_b,        8,            8}
     , {mag,          0,            3}
     , {progress,     false,        100000}
     , {samples,      16,           16}
@@ -110,12 +115,17 @@ default_opt(Key, Value) ->
 %% data is invalid.
 normalize_opt(dump, S) ->
     true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), true;
+normalize_opt(hll_b, false) -> true;
+normalize_opt(hll_b, I) ->
+    true = is_integer(I) andalso I >= 4 andalso I =< 16, true;
 normalize_opt(mag, I) ->
     true = is_integer(I) andalso I >= 0, true;
+normalize_opt(progress, false) -> true;
 normalize_opt(progress, P) ->
-    true = (P =:= false) orelse (is_integer(P) andalso P > 0), true;
+    true = is_integer(P) andalso P > 0, true;
+normalize_opt(samples, false) -> true;
 normalize_opt(samples, N) ->
-    true = is_integer(N) andalso is_power_of_2(N), true;
+    true = is_integer(N) andalso N > 0, true;
 normalize_opt(strlen, B) ->
     true = is_boolean(B), true;
 normalize_opt(rec_attrs, A) ->
@@ -125,10 +135,6 @@ normalize_opt(mnesia_dir, D) ->
 normalize_opt(Key, _Value) ->
     io:format("** ignoring unknown option: ~p~n", [Key]),
     false.
-
-is_power_of_2(2) -> true;
-is_power_of_2(N) when N rem 2 =:= 0 -> is_power_of_2(N div 2);
-is_power_of_2(_) -> false.
 
 %% getter for individual options handling defaults and special cases;
 %% see table in opts() above

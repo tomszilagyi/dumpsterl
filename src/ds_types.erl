@@ -304,8 +304,8 @@ ext_data(_V,_Class, Ext) -> Ext.
 %% For atoms, maintain a dictionary of per-value stats for each value
 ext_data_atom({V, Attrs}, Ext) ->
     PVS = case orddict:find(V, Ext) of
-              error -> ds_stats:pvs_new({V, Attrs});
-              {ok, PVS0} -> ds_stats:pvs_add({V, Attrs}, PVS0)
+              error -> ds_pvattrs:new(Attrs);
+              {ok, PVS0} -> ds_pvattrs:add(Attrs, PVS0)
           end,
     orddict:store(V, PVS, Ext).
 
