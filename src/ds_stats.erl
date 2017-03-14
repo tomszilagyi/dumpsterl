@@ -19,17 +19,19 @@
                  hyperloglog
                }).
 
+%% @doc API note:
+%%
+%% By convention, data structure modules need to handle the special
+%% case of being disabled. In this case, their new/1 function receives
+%% 'false' as argument and the atom 'undefined' must be returned.
+%%
+%% Other API functions add/2, join/2 etc.  must handle an 'undefined'
+%% instance in an appropriate way (possibly returning 'undefined' as
+%% the resulting version).
+
 new() ->
-    Sampler =
-        case ds_opts:getopt(samples) of
-            false -> undefined;
-            N -> ds_sampler:new(N)
-        end,
-    Hyperloglog =
-        case ds_opts:getopt(hll_b) of
-            false -> undefined;
-            B -> ds_hyperloglog:new(B)
-        end,
+    Sampler = ds_sampler:new(ds_opts:getopt(samples)),
+    Hyperloglog = ds_hyperloglog:new(ds_opts:getopt(hll_b)),
     #stats{sampler = Sampler, hyperloglog = Hyperloglog}.
 
 add({V,_A}=VA,
@@ -42,15 +44,9 @@ add({V,_A}=VA,
     #stats{count = Count+1,
            min_pvs = update_min(VA, MinPVS),
            max_pvs = update_max(VA, MaxPVS),
-           sampler = update_sampler({Hash, VA}, Sampler),
-           hyperloglog = update_hyperloglog(Hash, Hyperloglog)
+           sampler = ds_sampler:add_hash({Hash, VA}, Sampler),
+           hyperloglog = ds_hyperloglog:add_hash(Hash, Hyperloglog)
           }.
-
-update_sampler(_Data, undefined) -> undefined;
-update_sampler(Data, Sampler) -> ds_sampler:add_hash(Data, Sampler).
-
-update_hyperloglog(_Data, undefined) -> undefined;
-update_hyperloglog(Data, Sampler) -> ds_hyperloglog:add_hash(Data, Sampler).
 
 get_count(#stats{count=Count}) -> Count.
 

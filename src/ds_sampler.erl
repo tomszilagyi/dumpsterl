@@ -25,6 +25,7 @@
         }).
 
 %% Initialize a sampler with given capacity.
+new(false) -> undefined;
 new(Capacity) when is_integer(Capacity), Capacity > 0 ->
     #sampler{capacity = Capacity,
              size = 0,
@@ -36,6 +37,7 @@ new(T) ->
 %% Add a value with attributes to the sampler.
 %% Attributes are passed to the per-value statistics module
 %% that maintains stats for each sampled value.
+add(_VA, undefined) -> undefined;
 add({V, A}, Sampler) ->
     Hash = erlang:phash2(V, 1 bsl 32),
     add_hash({Hash, {V, A}}, Sampler).
@@ -46,6 +48,7 @@ add({V, A}, Sampler) ->
 %% hash computation. In this case, please make sure to use a suitable
 %% hash function (erlang:phash2 with the Range set to 2^32 is recommended).
 %% In case of doubt, just use add/2 above.
+add_hash(_Data, undefined) -> undefined;
 add_hash({Hash, VA}, #sampler{capacity = Capacity,
                               size = Size0, tree=Tree0,
                               max_hash = MaxHash0} = Sampler)
@@ -85,6 +88,8 @@ update_tree(Hash, {V, A}, Tree0, Size0) ->
     end.
 
 %% The capacity of the joined sampler will be the maximum of the two.
+join(undefined, Sampler) -> Sampler;
+join(Sampler, undefined) -> Sampler;
 join(#sampler{capacity = Capacity1} = Sampler1,
      #sampler{capacity = Capacity2} = Sampler2) when Capacity2 > Capacity1 ->
     join(Sampler2, Sampler1);
@@ -92,6 +97,7 @@ join(Sampler1, #sampler{tree = Tree2}) ->
     lists:foldl(fun add_hash/2, Sampler1, gb_trees:to_list(Tree2)).
 
 %% Return a list of {V, PVS}
+get_samples(undefined) -> [];
 get_samples(#sampler{tree = Tree}) ->
     [Value || {_Hash, Value} <- gb_trees:to_list(Tree)].
 

@@ -27,6 +27,7 @@
         }).
 
 %% Initialize a HyperLogLog cardinality estimator.
+new(false) -> undefined;
 new(B) when is_integer(B), B >= 4, B =< 16 ->
     M = 1 bsl B,
     Dw = 32 - B,
@@ -37,6 +38,7 @@ new(T) ->
     error(badarg, [T]).
 
 %% Add a new term to the HyperLogLog cardinality estimator.
+add(_T, undefined) -> undefined;
 add(T, HyperLogLog) ->
     Hash = erlang:phash2(T, 1 bsl 32),
     add_hash(Hash, HyperLogLog).
@@ -47,6 +49,7 @@ add(T, HyperLogLog) ->
 %% hash computation. In this case, please make sure to use a suitable
 %% hash function (erlang:phash2 with Range set to 2^32 is recommended).
 %% In case of doubt, just use add/2 above.
+add_hash(_Hash, undefined) -> undefined;
 add_hash(Hash, #hyperloglog{b = B, dw = Dw, dmask = Dmask,
                             regs = Regs0} = HyperLogLog) ->
     Index = Hash bsr Dw + 1,
@@ -56,6 +59,8 @@ add_hash(Hash, #hyperloglog{b = B, dw = Dw, dmask = Dmask,
     HyperLogLog#hyperloglog{regs = Regs}.
 
 %% Two instances may be joined only if they are of the same parameter
+join(undefined, HLL) -> HLL;
+join(HLL, undefined) -> HLL;
 join(#hyperloglog{b = B, regs = Regs1} = HLL,
      #hyperloglog{b = B, regs = Regs2}) ->
     RegsZL = lists:zip(tuple_to_list(Regs1), tuple_to_list(Regs2)),
@@ -64,6 +69,7 @@ join(#hyperloglog{b = B, regs = Regs1} = HLL,
 join(HLL1, HLL2) ->
     error(badarg, [HLL1, HLL2]).
 
+estimate(undefined) -> 0;
 estimate(#hyperloglog{m = M, regs = Regs} = HyperLogLog) ->
     E = raw_e(HyperLogLog),
     if E =< 5 * M / 2 ->
@@ -78,6 +84,7 @@ estimate(#hyperloglog{m = M, regs = Regs} = HyperLogLog) ->
     end.
 
 %% Estimation of typical relative error, plus/minus
+error_est(undefined) -> 0;
 error_est(#hyperloglog{m = M}) ->
     1.04 / math:sqrt(M).
 
