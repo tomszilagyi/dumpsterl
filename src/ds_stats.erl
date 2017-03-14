@@ -13,8 +13,7 @@
 
 %% general per-node statistics data
 -record(stats, { count = 0,
-                 min_pvs,
-                 max_pvs,
+                 pts,
                  sampler,
                  hyperloglog
                }).
@@ -30,77 +29,79 @@
 %% the resulting version).
 
 new() ->
+    Pts = pts_new(),
     Sampler = ds_sampler:new(ds_opts:getopt(samples)),
     Hyperloglog = ds_hyperloglog:new(ds_opts:getopt(hll_b)),
-    #stats{sampler = Sampler, hyperloglog = Hyperloglog}.
+    #stats{pts = Pts, sampler = Sampler, hyperloglog = Hyperloglog}.
 
 add({V,_A}=VA,
     #stats{count = Count,
-           min_pvs = MinPVS,
-           max_pvs = MaxPVS,
+           pts = Pts,
            sampler = Sampler,
            hyperloglog = Hyperloglog}) ->
     Hash = erlang:phash2(V, 1 bsl 32),
-    #stats{count = Count+1,
-           min_pvs = update_min(VA, MinPVS),
-           max_pvs = update_max(VA, MaxPVS),
+    #stats{count = Count + 1,
+           pts = pts_add(VA, Pts),
            sampler = ds_sampler:add_hash({Hash, VA}, Sampler),
-           hyperloglog = ds_hyperloglog:add_hash(Hash, Hyperloglog)
-          }.
+           hyperloglog = ds_hyperloglog:add_hash(Hash, Hyperloglog)}.
 
 get_count(#stats{count=Count}) -> Count.
 
 %% Join two statistics into one
 join(#stats{count = Count0,
-            min_pvs = MinPVS0,
-            max_pvs = MaxPVS0,
+            pts = Pts0,
             sampler = Sampler0,
             hyperloglog = HLL0},
      #stats{count = Count1,
-            min_pvs = MinPVS1,
-            max_pvs = MaxPVS1,
+            pts = Pts1,
             sampler = Sampler1,
             hyperloglog = HLL1}) ->
     #stats{count = Count0 + Count1,
-           min_pvs = join_pvs(MinPVS0, MinPVS1),
-           max_pvs = join_pvs(MaxPVS0, MaxPVS1),
+           pts = pts_join(Pts0, Pts1),
            sampler = ds_sampler:join(Sampler0, Sampler1),
            hyperloglog = ds_hyperloglog:join(HLL0, HLL1)}.
 
 
-join_pvs(undefined, PVS) -> PVS;
-join_pvs(PVS, undefined) -> PVS;
+%% Points of interest statistics are represented as:
+%%
+%%     [{Pt, Value, PVAttrs}]
+%%
+%% where
+%%       Pt: point of interest, i.e., min, max
+%%    Value: value of Pt
+%%  PVAttrs: per-value attributes as maintained by ds_pvattrs
+pts_new() ->
+    [ {min, undefined, undefined}
+    , {max, undefined, undefined}
+    ].
 
-join_pvs({min, M0, PVS0}, {min, M1, PVS1}) when M0 == M1 ->
-    %% Use '==' in guard in case M0 and M1 are float and int with same value
-    {min, M0, ds_pvattrs:join(PVS0, PVS1)};
-join_pvs({min, M0, PVS0}, {min, M1,_PVS1}) when M0 < M1 -> {min, M0, PVS0};
-join_pvs({min, M0,_PVS0}, {min, M1, PVS1}) when M0 > M1 -> {min, M1, PVS1};
+pts_add(VA, PVStats) ->
+    [pt_add(VA, PVS) || PVS <- PVStats].
 
-join_pvs({max, M0, PVS0}, {max, M1, PVS1}) when M0 == M1 ->
-    %% Use '==' in guard in case M0 and M1 are float and int with same value
-    {max, M0, ds_pvattrs:join(PVS0, PVS1)};
-join_pvs({max, M0, PVS0}, {max, M1,_PVS1}) when M0 > M1 -> {max, M0, PVS0};
-join_pvs({max, M0,_PVS0}, {max, M1, PVS1}) when M0 < M1 -> {max, M1, PVS1}.
+pts_join(PVS0, PVS1) ->
+    lists:zipwith(fun pt_join/2, PVS0, PVS1).
 
 
-update_min({V, Attrs}, undefined) ->
+pt_add({V, Attrs}, {Pt, undefined, undefined}) ->
+    {Pt, V, ds_pvattrs:new(Attrs)};
+pt_add({V, Attrs}, {Pt, PtV, PV}) when V == PtV ->
+    %% Use '==' in guard in case V and PtV are float and int with same value
+    {Pt, V, ds_pvattrs:add(Attrs, PV)};
+pt_add({V, Attrs}, {min, Min,_PV}) when V < Min ->
     {min, V, ds_pvattrs:new(Attrs)};
-update_min({V, Attrs}, {min, Min,_MinPVS0}) when V < Min ->
-    {min, V, ds_pvattrs:new(Attrs)};
-update_min({V, Attrs}, {min, Min, MinPVS0}) when V == Min ->
-    {min, V, ds_pvattrs:add(Attrs, MinPVS0)};
-update_min({_V,_Attrs}, MinStats) ->
-    MinStats.
+pt_add({V, Attrs}, {max, Max,_PV}) when V > Max ->
+    {max, V, ds_pvattrs:new(Attrs)};
+pt_add({_V,_Attrs}, PtStats) ->
+    PtStats.
 
-update_max({V, Attrs}, undefined) ->
-    {max, V, ds_pvattrs:new(Attrs)};
-update_max({V, Attrs}, {max, Max,_MaxPVS0}) when V > Max ->
-    {max, V, ds_pvattrs:new(Attrs)};
-update_max({V, Attrs}, {max, Max, MaxPVS0}) when V == Max ->
-    {max, V, ds_pvattrs:add(Attrs, MaxPVS0)};
-update_max({_V,_Attrs}, MaxStats) ->
-    MaxStats.
+pt_join({Pt, undefined, undefined}, {Pt,_V,_PV} = PVS) -> PVS;
+pt_join({Pt,_V,_PV}=PVS, {Pt, undefined, undefined}) -> PVS;
+pt_join({Pt, V0, PV0}, {Pt, V1, PV1}) when V0 == V1 ->
+    %% Use '==' in guard in case V0 and V1 are float and int with same value
+    {Pt, V0, ds_pvattrs:join(PV0, PV1)};
+pt_join({min, V0,_PV0}, {min, V1, PV1}) when V0 > V1 -> {min, V1, PV1};
+pt_join({max, V0,_PV0}, {max, V1, PV1}) when V0 < V1 -> {max, V1, PV1};
+pt_join(PVS0, _PVS1) -> PVS0.
 
 
 %% Tests

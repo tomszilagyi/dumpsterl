@@ -18,22 +18,24 @@
         , timespan  % {MinTK, MaxTK} where TK is {Ts, Key}
         }).
 
+%% Create 2-tuple TK from value attributes
 %% TODO maybe require a normalized form of Attrs here
 %% (pre-process them in ds_drv) so we can do simple pattern matching
 %% instead of proplists:get_value/2 each time we want ts and key
-new(#pvattrs{} = PVS) -> PVS;
-new(Attrs) ->
+extract_tk(Attrs) ->
     Ts = proplists:get_value(ts, Attrs),
     Key = proplists:get_value(key, Attrs),
-    #pvattrs{count = 1, timespan = new_timespan({Ts, Key})}.
+    {Ts, Key}.
+
+new(#pvattrs{} = PVS) -> PVS;
+new(Attrs) ->
+    #pvattrs{count = 1, timespan = new_timespan(extract_tk(Attrs))}.
 
 add(#pvattrs{count=Count0, timespan=TSp0},
     #pvattrs{count=Count1, timespan=TSp1}) ->
-    #pvattrs{count = Count0+Count1, timespan = join_timespan(TSp0, TSp1)};
+    #pvattrs{count = Count0 + Count1, timespan = join_timespan(TSp0, TSp1)};
 add(Attrs, #pvattrs{count=Count, timespan=TSp}) ->
-    Ts = proplists:get_value(ts, Attrs),
-    Key = proplists:get_value(key, Attrs),
-    #pvattrs{count = Count+1, timespan = add_timespan({Ts, Key}, TSp)}.
+    #pvattrs{count = Count + 1, timespan = add_timespan(extract_tk(Attrs), TSp)}.
 
 %% Since we can discriminate Attrs from #pvattrs{}, we use add/2 for joins too.
 %% This is useful in ds_sampler:join/2. Provide join/2 here as a simple alias.
@@ -55,6 +57,14 @@ join_timespan({TK0, TK1}, {TK2, TK3}) -> {min(TK0, TK2), max(TK1, TK3)}.
 
 %% Tests
 -ifdef(TEST).
+
+extract_tk_test() ->
+    ?assertEqual({undefined, undefined}, extract_tk([])),
+    ?assertEqual({1, undefined}, extract_tk([{ts, 1}])),
+    ?assertEqual({undefined, abc}, extract_tk([{key, abc}])),
+    ?assertEqual({1, abc}, extract_tk([{ts, 1}, {key, abc}])),
+    ?assertEqual({1, abc}, extract_tk([{key, abc}, {ts, 1}])),
+    ?assertEqual({1, abc}, extract_tk([{ts, 1}, keep, {this, tuple}, {key, abc}])).
 
 timespan_test() ->
     TS0 = new_timespan({1, a}),
