@@ -1,118 +1,94 @@
-Dumpsterl rewrite
+Dumpsterl
 
-The purpose of this rewrite: create a durable, extendable and
+The purpose of Dumpsterl is to provide a powerful, extensible and
 user-friendly framework for data exploration in NoSQL environments.
 
-** generalized and pluggable type system
-- count parent categories and imbedded categories, too
-- count skipped rows, too (where accessor throws)
-- allow dynamic subtypes to have further subtypes
-  ie. allow types() to contain something like:
-    { {tuple, '_'}, ... } %% subtypes for any (concrete) size tuple
+* Features
 
-** standard and pluggable spec format
-- also for programmatic report creation
+Stuff that definitely needs treatment before the initial public release
 
-** advanced features for data mining
-- sampling
-- tag each data with arbitrary attributes
-  - timestamp (when was this data created)
-  - key (to read back the whole record)
+** General
+*** TODO documentation
+- EDoc should be generated and contain API documentation
+- AsciiDoc should be generated and contain user manual
 
-** ideas for development
-- add generic types to the type hierarchy, eg.
-  - {list_of, T} dynamic type where a list has elements of the same type
-  - commonly used complex types e.g. proplist
-- cut intermediary stages of the hierarchy, e.g. if they are all
-  integers, get rid of 'T' and 'numeric'. Formally, all nodes with
-  only one child should be removed and replaced by the child.
-- 'decision tree compiler' for quick computation of values' subtypes
-- more efficient in-memory representation of tree, for faster updates
-  (store all nodes in a flat ets table keyed by class, since they are
-  unique; updating a node does not involve rebuilding the whole data
-  structure)
-- account each data term only in leaf node, and when assembling the
-  tree, derive parent nodes based on the union of children...
-- parallelize: send data to N trees in round-robin fashion, merge
-  results regularly for each chunk or at the end
-  (N > number of processors)
-- provide some way to gracefully interrupt the probe without killing
-  the Erlang shell (start our own mini-shell in the Erlang shell!)
-- read schema.DAT to learn about record fields
-- treat dict types similar to tuples/records, where the keys
-  correspond to field names (with the notable exception that not all
-  instances necessarily have the same sets of keys, maybe only a
-  subset). This is also how maps should be implemented.
-  The GUI could show a toplevel stat of what keys there are (with what
-  freq, etc) and the below level individual per-key stats for values.
+*** TODO reorg modules
+  - ds -> ds_core or ds_spec or ds_tree
+  - ds should be an interface module and the only module the user has
+    to manually call functions in, eg. ds:shell(), ds:gui(), etc.
+
+** Probe: data acquisition phase
+*** DONE statistical sampling
 - don't add the same value multiple times to samples, to maximize the
   number of unique values shown. Instead, for each collected value,
   maintain per-value stats to show how it is distributed across the
   population.
+*** DONE cardinality estimation
+*** DONE tag each data with arbitrary attributes
+What Dumpsterl itself uses for display purposes:
+ - timestamp (when was this data created)
+ - key (to read back the whole record)
+*** DONE support for records
+- read schema.DAT to learn about mnesia schema (table attributes)
+- go through loaded modules to gather record attributes in loaded code
+
+- store field attributes automatically, when first encountering
+  a record type
+- the field attributes information for records is stored in Ext
+- the initial attributes gatherin phase can rely on several sources:
+  - code: record attribute definitions in loaded beam/source
+    files, read once at the beginning, see rec_attrs in ds_opts.
+    The best way to get all attributes, but requires the probe to be
+    run in a node with the production code also loaded.
+  - disk_log -> read schema.DAT
+    Supported in case a bare Erlang node runs the probe. Will not
+    find attributes to records that are not the basis of any table
+    (embedded in table fields).
+  - mnesia -> mnesia:table_info(T, attributes)
+    Not supported: if dumpsterl is run on a system where
+    mnesia is up and running, the code accessing the tables is
+    also loaded, so we can get the same info (and more) from the
+    beam/source attributes.
+    But maybe, MAYBE it would be worth adding anyway?
+
+*** TODO support 'keep' flag
+- sampler: provide attribute 'keep' to signify that a particular
+  piece of data satisfies certain criteria to be 'interesting'.
+  This attribute would ensure that the data is kept stored
+  regardless of sampling allowances. Implement with a dedicated
+  sampler initialized with capacity 'infinity'.
+*** TODO parallelize
+  send data to N trees in round-robin fashion, then
+  - join results regularly for each chunk, OR
+  - dump each separately (e.g. ds.bin.k) and join k=0..N at the end
+    (N > number of processors)
+
+*** TODO probe command shell to control the probe driver
+ - print progress updates using vt100 rewrite-last-line technique
+ - line oriented command syntax after ds> prompt to support:
+   - setting and viewing options before a run
+   - running, pausing, resuming
+   - loading a dumped spec and resuming its run
+*** TODO save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be
     more than the count in the Stats of 'T' in case of skipped items.
   - options used for the run
   - wall clock of start and end
-- support viewing stuff in different formats, e.g. if an integer is
-  a flag, it is helpful to be able to switch to a hex/bin view.
-- sampler: provide attribute 'keep' to signify that a particular
-  piece of data satisfies certain criteria to be 'interesting'.
-  This attribute would ensure that the data is kept stored
-  regardless of sampling allowances.
-
-** GUI browser concept
-- two panes: left for navigation, right for details
-- navigation pane:
-  - type hierarchy stack
-    see where the view is located; clicking on any parent
-    jumps up to that level
-    eg. T -> tuple -> {record, {kcase, 21}}
-  - subtype / element list
-    shows the list of subspecs below the currently selected one;
-    clicking on any of them navigates the view down to that level
-
-    in case of complex structures, this shows a list of these specs,
-    allowing the user to click on one of them. The view is then
-    directed to the toplevel spec of that element, as a further level
-    down the hierarchy.
-    eg. T -> tuple -> {record, {kcase, 21}} -> element(2) or #kcase.cid
-
-    the transitions may be distinguished by coloring the entry
-    in the type hierarchy stack, e.g.
-      subtype: light grey;
-      field / element / item: light orange
-
-- details pane:
-  - statistics visualization panel
-  - private data visualization panel
-
-- statistics and private data should expose accessors so the
-  gui can be displayed on a modular basis (i.e. knowledge of the
-  data structure, and how to display it, should reside in the
-  statistics or private data module; gui code should remain generic).
-
-- the field attributes information for records to be stored in Ext
-  - gather field attributes automatically, when first encountering
-    a record type
-  - the means depends on the data source:
-    - default: record attribute definitions in loaded beam/source
-      files, read once at the beginning, see rec_attrs in ds_opts.
-    - mnesia -> mnesia:table_info(T, attributes)
-        This does not make sense: if dumpsterl is run on a system where
-        mnesia is up and running, the code accessing the tables is
-        also loaded, so we can get the same info (and more) from the
-        beam/source attributes.
-    - disk_log -> read schema.DAT
-        Might be useful if a bare Erlang node is used to run the
-        dumpsterl probe.
-
-- when showing a type with sub-fields, the columns in the lower tab
-  should be Field, Attribute, Type instead of Type, Count (since these
-  counts are always all identical to that of the complex type).
-  Field is the field number and Attribute is the field name.
-
-*** The true concept of children in the type hierarchy
+  - iterator key (in case we want to continue running the probe from
+    this point)
+- the data can be put into Ext of the spec's root node.
+** Conversion: between probe and gui
+*** DONE compact
+  cut intermediary stages of the hierarchy, e.g. if they are all
+  integers, get rid of 'T' and 'numeric'. Formally, all nodes with
+  only one child should be removed and replaced by the child.
+*** DONE join_up
+ account each data term only in leaf node, and when assembling the
+ tree, derive parent nodes based on the union of children.
+*** TODO get the metadata from root node's Ext
+** Type system
+*** DONE The fundamental semantics of the type hierarchy
 
 Children in the type hierarchy are regarded as either
 - alternative subtypes of the current union type;
@@ -120,12 +96,21 @@ Children in the type hierarchy are regarded as either
 
 Type parameters are the concept behind the generic types of
 tuple, record, list and more (e.g., maps and dict-like types).
-For example, the improper list has two parameters, the type of
+For example, the improper_list type has two parameters, the type of
 the list items and the type of the tail item. The tuple type
 has a parameter for each field position. The map type has a parameter
 for each unique key ever seen in any map instance in that position.
 
-*** map support
+The code could be refactored a bit to reflect the above simple
+underlying concept.
+
+*** TODO Complete coverage of Erlang types
+  - commonly used complex types e.g. proplist
+  - allow dynamic subtypes to have further subtypes
+    ie. allow types() to contain something like:
+    { {tuple, '_'}, ... } %% subtypes for any (concrete) size tuple
+
+**** TODO maps
 
 Maps are a generic type. Attributes of a map are the transitive union
 set of keys seen in any instance.
@@ -143,18 +128,7 @@ the spec to a minimum.  Differing counts of key occurrences will be
 reflected by the counters of each child spec, reflected by the Count
 column of the type parameter listing in the gui.
 
-*** additional gui elements
-- search: allow entering a piece of string, data, etc.
-- toolbar: load, save, generate report, exit, etc.
-- manually add field information in case it could not be
-  gathered automatically
-- manually supply timestamp format function
-  e.g. if it turns out the ts is in gregorian seconds, allow
-  user to set fun calendar:gregorian_seconds_to_datetime/1.
-- allow opening and viewing multiple specs perhaps as part
-  of a MDI windowing solution (wx: aui)
-
-** type reductions
+*** TODO Type labeling / reductions
 
 The raw end result of the probing stage will reflect the core Erlang
 types (enriched with record information) found in the data.
@@ -202,10 +176,83 @@ A declarative, user-editable syntax would be nice.
 That way, the user could add their specific type notations and
 see them in action.
 
-** test commands
+** GUI: spec browser/explorer
+*** DONE GUI browser concept
+- two panes: left for navigation, right for details
+- navigation pane:
+  - type hierarchy stack
+    see where the view is located; clicking on any parent
+    jumps up to that level
+    eg. T -> tuple -> {record, {kcase, 21}}
+  - subtype / element list
+    shows the list of subspecs below the currently selected one;
+    clicking on any of them navigates the view down to that level
 
-%% whole kcase table with annotations from disk log:
-ds_drv:spec_disk_log("/kred/live/system/db/kcase.DCD", {0, [{ts, #kcase.create_date}, {key, #kcase.cid}]}, inf, [{progress, 10000}, {dump, "/tmp/ds.bin"}]).
+    in case of complex structures, this shows a list of these specs,
+    allowing the user to click on one of them. The view is then
+    directed to the toplevel spec of that element, as a further level
+    down the hierarchy.
+    eg. T -> tuple -> {record, {kcase, 21}} -> element(2) or #kcase.cid
 
-%% local test
-ds_drv:spec_disk_log("kred_data/kcase.DCD", {0, [{ts, 3}, {key, 2}]}, 1000000, [{progress, 10000}, dump, {mnesia_dir, "kred_data"}]).
+    the transitions may be distinguished by coloring the entry
+    in the type hierarchy stack, e.g.
+      subtype: light grey;
+      field / element / item: light orange
+
+- details pane:
+  - statistics visualization panel
+  - private data visualization panel
+
+- statistics and private data should expose accessors so the
+  gui can be displayed on a modular basis (i.e. knowledge of the
+  data structure, and how to display it, should reside in the
+  statistics or private data module; gui code should remain generic).
+
+- when showing a type with sub-fields, the columns in the lower tab
+  should be Field, Attribute, Type instead of Type, Count (since these
+  counts are always all identical to that of the complex type).
+  Field is the field number and Attribute is the field name.
+
+*** TODO additional gui features
+- search: allow entering a piece of string, data, etc.
+- toolbar: load, save, generate report, exit, etc.
+- manually add field information in case it could not be
+  gathered automatically
+- manually supply timestamp format function
+  e.g. if it turns out the ts is in gregorian seconds, allow
+  user to set fun calendar:gregorian_seconds_to_datetime/1.
+- allow opening and viewing multiple specs perhaps as part
+  of a MDI windowing solution (wx: aui)
+- allow exporting the lists of data (e.g. samples of a node)
+  to external files
+  - list of terms suitable to read with file:consult/1
+  - binary via term_to_binary
+  - csv (maybe limited to cases wherer data is simple eg. integers?)
+
+*** TODO support viewing data in different formats
+  e.g. if we suspect that an integer contains bit flags,
+  it is helpful to be able to switch to a hex/bin view
+  and maybe even give names to different bits.
+
+
+* Ideas
+
+More tentative / needs research / not a well defined feature to work on
+
+** how does the probe get smoothly loaded into a node?
+- it is generally possible to include the application in the host Erlang
+  system, but that is not always desirable (wx, etc).
+- a user-friendly mechanism to load only the probe modules would be
+  nice.
+- support compiling the probe only (without wx present)
+- support compiling without maps (on old Erlang systems)
+** 'decision tree compiler' for quick computation of values' subtypes
+ Allow the user to express the type hierarchy in a more succinct way
+ and generate the types categorization code out of that.
+** more efficient in-memory representation of tree, for faster updates
+  store all nodes in a flat ets table keyed by class, since they are
+  unique; updating a node does not involve rebuilding the whole data
+  structure
+  needed? (perf perspective)
+  doable? (cross type domains with generic types)
+
