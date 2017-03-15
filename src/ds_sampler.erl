@@ -26,7 +26,8 @@
 
 %% Initialize a sampler with given capacity.
 new(false) -> undefined;
-new(Capacity) when is_integer(Capacity), Capacity > 0 ->
+new(Capacity) when is_integer(Capacity), Capacity > 0;
+                   Capacity =:= infinity ->
     #sampler{capacity = Capacity,
              size = 0,
              tree = gb_trees:empty(),
@@ -62,30 +63,53 @@ add_hash({Hash, _VA}, #sampler{max_hash = MaxHash} = Sampler)
 add_hash({Hash, {V, A}}, #sampler{max_hash = MaxHash,
                                   tree = Tree0} = Sampler)
   when Hash =:= MaxHash ->
-    {Hash, {V, PVS0}} = gb_trees:largest(Tree0),
-    PVS = ds_pvattrs:add(A, PVS0),
-    Tree = gb_trees:update(Hash, {V, PVS}, Tree0),
+    {Hash, {V, PV0}} = gb_trees:largest(Tree0),
+    PV = ds_pvattrs:add(A, PV0),
+    Tree = gb_trees:update(Hash, {V, PV}, Tree0),
     Sampler#sampler{tree = Tree};
 add_hash({Hash, VA}, #sampler{capacity = Capacity,
                               size = Size0, tree = Tree0} = Sampler) ->
     {Tree1, Size1} = update_tree(Hash, VA, Tree0, Size0),
     if Size1 > Capacity ->
-            {_, _, Tree} = gb_trees:take_largest(Tree1),
+            {_, Value, Tree} = gb_trees:take_largest(Tree1),
+            Size = case Value of
+                       {_V,_PV} -> Size1 - 1;
+                       Bucket -> Size1 - length(Bucket)
+                   end,
             {MaxHash, _} = gb_trees:largest(Tree),
-            Sampler#sampler{size = Size1 - 1, max_hash = MaxHash, tree = Tree};
+            Sampler#sampler{size = Size, max_hash = MaxHash, tree = Tree};
        true ->
             Sampler#sampler{size = Size1, tree = Tree1}
     end.
 
 update_tree(Hash, {V, A}, Tree0, Size0) ->
     case gb_trees:lookup(Hash, Tree0) of
-        {value, {V, PVS0}} ->
-            PVS = ds_pvattrs:add(A, PVS0),
-            {gb_trees:update(Hash, {V, PVS}, Tree0), Size0};
         none ->
-            PVS = ds_pvattrs:new(A),
-            {gb_trees:insert(Hash, {V, PVS}, Tree0), Size0 + 1}
+            PV = ds_pvattrs:new(A),
+            {gb_trees:insert(Hash, {V, PV}, Tree0), Size0 + 1};
+        {value, {V, PV0}} ->
+            PV = ds_pvattrs:add(A, PV0),
+            {gb_trees:update(Hash, {V, PV}, Tree0), Size0};
+        {value, {V1, PV1}} ->
+            %% hash collision with another single value, convert to list bucket
+            PV = ds_pvattrs:new(A),
+            Bucket = [{V, PV}, {V1, PV1}],
+            {gb_trees:update(Hash, Bucket, Tree0), Size0 + 1};
+        {value, Bucket0} ->
+            %% collision occurred earlier on this hash
+            {Bucket, Size} = update_bucket(Bucket0, {V, A}, Size0),
+            {gb_trees:update(Hash, Bucket, Tree0), Size}
     end.
+
+update_bucket(Bucket, {V, A}, Size) ->
+    case lists:keyfind(V, 1, Bucket) of
+        false ->
+            {[{V, ds_pvattrs:new(A)} | Bucket], Size + 1};
+        {V, PV0} ->
+            PV = ds_pvattrs:add(A, PV0),
+            {lists:keystore(V, 1, Bucket, {V, PV}), Size}
+    end.
+
 
 %% The capacity of the joined sampler will be the maximum of the two.
 join(undefined, Sampler) -> Sampler;
@@ -96,10 +120,9 @@ join(#sampler{capacity = Capacity1} = Sampler1,
 join(Sampler1, #sampler{tree = Tree2}) ->
     lists:foldl(fun add_hash/2, Sampler1, gb_trees:to_list(Tree2)).
 
-%% Return a list of {V, PVS}
+%% Return a list of {V, PV}
 get_samples(undefined) -> [];
-get_samples(#sampler{tree = Tree}) ->
-    [Value || {_Hash, Value} <- gb_trees:to_list(Tree)].
+get_samples(#sampler{tree = Tree}) -> lists:flatten(gb_trees:values(Tree)).
 
 
 %% Tests
@@ -113,8 +136,8 @@ print(#sampler{capacity = Capacity, size = Size, tree = Tree,
               "~nSampler ~s with capacity=~B, size=~B, max_hash=~B~n"
               "sampled values with per-value stats:~n~n",
               [Name, Capacity, Size, MaxHash]),
-    [io:format(user, "~10B: ~6w  ~p~n", [Hash, V, PVS])
-     || {Hash, {V, PVS}} <- gb_trees:to_list(Tree)],
+    [io:format(user, "~10B: ~6w  ~p~n", [Hash, V, PV])
+     || {Hash, {V, PV}} <- gb_trees:to_list(Tree)],
     ok.
 -define(print(Sampler), print(Sampler, ??Sampler)).
 -else.
@@ -134,17 +157,51 @@ sampler_test() ->
     ?print(S),
     Hist = lists:foldl(fun(N, Acc) ->
                                orddict:update_counter(N div 100, 1, Acc)
-                       end, orddict:new(), [N || {N, _PVS} <- get_samples(S)]),
+                       end, orddict:new(), [N || {N, _PV} <- get_samples(S)]),
     %% assert some level of uniformity
     ?assert(length(Hist) > 35),
     ?assert(lists:max([Count || {_Bin, Count} <- Hist]) =< 4),
     ok.
 
+collisions_test() ->
+    NonColliders = lists:seq(0, 9999),
+    Colliders =
+        %% Each row contains numbers that hash to the same value.
+        [   22722,  266086
+        ,   26544,  217817
+        ,   33702,   44741
+        ,   38988,  125056
+        ,   47282,   81624
+        ,  125915,  283130
+        ,  300486,  879671
+        ,  302126,  905421
+        ,  302781,  868970
+        ,  302800,  362107
+        %% triple collisions:
+        ,   70024, 1918936, 4696183
+        , 1074149, 2805927, 9580072
+        , 1190377, 1534289, 6156731
+        , 1235514, 4795238, 6886479
+        , 2378846, 3760671, 5137463
+        , 2671427, 7709636, 8682435
+        , 3635546, 5201779, 5527149
+        , 4604703, 4879230, 9248585
+        , 5557231, 5988521, 6524388
+        , 6161979, 6660282, 7669964
+        ],
+
+    S0 = lists:foldl(fun add/2, new(infinity), [{N, []} || N <- NonColliders]),
+    S1 = lists:foldl(fun add/2, S0, [{N, []} || N <- Colliders]),
+    SampleCount = length(NonColliders) + length(Colliders),
+    ?assertEqual(SampleCount, length(get_samples(S1))),
+    SampleValues = lists:sort(Colliders ++ NonColliders),
+    ?assertEqual(SampleValues, [V || {V,_PV} <- lists:sort(get_samples(S1))]).
+
 duplicates_test() ->
     Sd = lists:foldl(fun add/2, new(10),
                      [{N rem 25, [{key, N}]} || N <- lists:seq(0, 9999)]),
     ?print(Sd),
-    Counts = [ds_pvattrs:get_count(PVS) || {_N, PVS} <- get_samples(Sd)],
+    Counts = [ds_pvattrs:get_count(PV) || {_N, PV} <- get_samples(Sd)],
     ?assertEqual(10, length(Counts)),
     [?assertEqual(400, Count) || Count <- Counts].
 
@@ -160,7 +217,7 @@ join_test() ->
     Sj1 = join(S1, S2),
     %% verify that the joined set contains samples from both S1 and S2
     {JoinedFromS1, JoinedFromS2} =
-        lists:partition(fun({V,_PVS}) -> V < 1000 end, get_samples(Sj1)),
+        lists:partition(fun({V,_PV}) -> V < 1000 end, get_samples(Sj1)),
     ?assert(length(JoinedFromS1) > 0),
     ?assert(length(JoinedFromS2) > 0),
     ?print(Sj1),
@@ -168,7 +225,7 @@ join_test() ->
     Sj2 = join(S1, Sj1),
     %% verify that items from S1 have count 2 in Sj2
     CountsFromS1 =
-        [ds_pvattrs:get_count(PVS) || {N, PVS} <- get_samples(Sj2), N < 1000],
+        [ds_pvattrs:get_count(PV) || {N, PV} <- get_samples(Sj2), N < 1000],
     [?assertEqual(2, Count) || Count <- CountsFromS1],
     ?print(Sj2).
 

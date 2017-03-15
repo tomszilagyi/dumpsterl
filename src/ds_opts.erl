@@ -34,7 +34,7 @@
 %%              NB. just including rec_attrs (with no value) in the
 %%              options list is equivalent to {rec_attrs, force}.
 %%
-%%   samples: false | N (positive integer)
+%%   samples: false | N (positive integer) | infinity
 %%       maximum number of samples to collect (per node)
 %%
 %%   strlen: true | false
@@ -128,6 +128,7 @@ normalize_opt(progress, false) -> true;
 normalize_opt(progress, P) ->
     true = is_integer(P) andalso P > 0, true;
 normalize_opt(samples, false) -> true;
+normalize_opt(samples, infinity) -> true;
 normalize_opt(samples, N) ->
     true = is_integer(N) andalso N > 0, true;
 normalize_opt(strlen, B) ->
