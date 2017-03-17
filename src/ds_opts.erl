@@ -11,6 +11,22 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("config.hrl").
+
+-ifdef(CONFIG_LISTS_FILTERMAP).
+-define(filtermap(Fun, List), lists:filtermap(Fun, List)).
+-else.
+-define(filtermap(Fun, List), filtermap(Fun, List)).
+filtermap(Fun, List) ->
+    lists:foldr(fun(Elem, Acc) ->
+                        case Fun(Elem) of
+                            false -> Acc;
+                            true -> [Elem|Acc];
+                            {true, Value} -> [Value|Acc]
+                        end
+                end, [], List).
+-endif.
+
 %% dumpsterl operation can be controlled to some extent. Supported options:
 %%
 %% options influencing spec semantics:
@@ -95,7 +111,7 @@ getopts() ->
 
 
 normalize_opts(Opts) ->
-    lists:filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
+    ?filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
 
 normalize_opt_f(Opt, Opts) ->
     [Key] = proplists:get_keys([Opt]),

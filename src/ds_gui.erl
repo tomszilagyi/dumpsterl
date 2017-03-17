@@ -1,10 +1,13 @@
 -module(ds_gui).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--behaviour(wx_object).
-
 %% Client API
 -export([start_link/0, stop/1]).
+
+-include("config.hrl").
+-ifdef(CONFIG_WXGUI).
+
+-behaviour(wx_object).
 
 %% wx_object callbacks
 -export([init/1, terminate/2,  code_change/3,
@@ -376,3 +379,9 @@ load_zipper(Filename) ->
     {ok, Bin} = file:read_file(Filename),
     Tree = binary_to_term(Bin),
     ds_zipper:from_tree(ds:join_up(ds:compact(Tree))).
+
+-else.
+%% In case the GUI is disabled:
+start_link() -> throw(wx_gui_disabled).
+stop(_) -> throw(wx_gui_disabled).
+-endif.

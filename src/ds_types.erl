@@ -14,6 +14,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-include("config.hrl").
+
+-ifdef(CONFIG_MAPS).
+-define(is_map(X), is_map(X)).
+-else.
+-define(is_map(X), false).
+-endif.
+
 %% The type hierarchy is defined by types()
 %% - subtypes are mutually exclusive
 %% - dynamically created subtypes denoted by
@@ -128,6 +136,7 @@ subtype(V, 'T') when is_atom(V) -> atom;
 subtype(V, 'T') when is_list(V) -> list;
 subtype(V, 'T') when is_tuple(V) -> tuple;
 subtype(V, 'T') when is_binary(V) -> binary;
+subtype(V, 'T') when ?is_map(V) -> map;
 
 subtype(true, atom) -> boolean;
 subtype(false, atom) -> boolean;
@@ -177,6 +186,8 @@ subtype(T, tuple) ->
         false -> {tuple, size(T)}
     end;
 
+subtype(M, map) -> subtype_map(M);
+
 subtype(S, str_printable) ->
     case is_str_alnum(S) of
         true -> str_alnum;
@@ -218,6 +229,13 @@ subtype(T, {tuple,_N}) -> {'$fields', tuple_to_list(T)};
 subtype(R, {record, {_RecName,_Size}}) -> {'$fields', tl(tuple_to_list(R))};
 
 subtype(_V, _Class) -> '$null'.
+
+%% This is extracted into a separate function for the sake of -ifdef.
+-ifdef(CONFIG_MAPS).
+subtype_map(_M) -> '$null'. %% TODO
+-else.
+subtype_map(_M) -> '$null'.
+-endif.
 
 -ifdef(discarded).
 opt_mag(0) -> [];

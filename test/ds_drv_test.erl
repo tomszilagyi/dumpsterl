@@ -4,16 +4,19 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include("config.hrl").
+-include("random.hrl").
+
 -record(rec_test, {key, value1, value2, value3}).
 
 spec_ets_set_test() ->
-    random:seed(erlang:now()),
+    ?RNDINIT,
     Tid = ets:new(ets_test, [{keypos, #rec_test.key}]),
     populate(ets, Tid, set, 100),
     spec_test_util(Tid, 100).
 
 spec_ets_dbag_test() ->
-    random:seed(erlang:now()),
+    ?RNDINIT,
     Tid = ets:new(ets_test, [duplicate_bag, {keypos, #rec_test.key}]),
     populate(ets, Tid, dbag, 100),
     spec_test_util(Tid, 200).
@@ -89,8 +92,8 @@ generate_recs(dbag) ->
                }
     ].
 
-random(int) -> random:uniform(1 bsl 30) + 16#10ffff;
-random(float) -> random:uniform();
+random(int) -> ?RNDMOD:uniform(1 bsl 30) + 16#10ffff;
+random(float) -> ?RNDMOD:uniform();
 random(alpha) ->
-    Len = random:uniform(40),
-    [$a + random:uniform(25) || _N <- lists:seq(1, Len)].
+    Len = ?RNDMOD:uniform(40),
+    [$a + ?RNDMOD:uniform(25) || _N <- lists:seq(1, Len)].

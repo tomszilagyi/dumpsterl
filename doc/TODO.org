@@ -17,6 +17,17 @@ Stuff that definitely needs treatment before the initial public release
   - ds should be an interface module and the only module the user has
     to manually call functions in, eg. ds:shell(), ds:gui(), etc.
 
+*** TODO testing framework
+**** TODO test data model
+
+An exemplary data model should be devised and a data generator written
+that randomly generates instances of that data, for testing purposes.
+
+**** DONE foreach_otp ./do_test.sh
+
+A script to exercise all the tests with all Erlang versions of
+interest (~R14 to latest).
+
 ** Probe: data acquisition phase
 *** DONE statistical sampling
 - don't add the same value multiple times to samples, to maximize the

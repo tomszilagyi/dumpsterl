@@ -18,6 +18,9 @@
 -export([ print_table/0 ]). % For manual use when test-compiled
 -endif.
 
+-include("config.hrl").
+-include("random.hrl").
+
 -record(hyperloglog,
         { b      % bit width of the number of registers
         , m      % number of registers, m = 2^b
@@ -253,12 +256,12 @@ sigma_test() ->
                                           ($1) -> false
                                        end, BinStr))
         end,
-    random:seed(erlang:now()),
+    ?RNDINIT,
     sigma_test_loop(LeadingZerosF, 100000).
 
 sigma_test_loop(_F, 0) -> ok;
 sigma_test_loop(VerifF, Count) ->
-    N = random:uniform(1 bsl 32) - 1,
+    N = ?RNDMOD:uniform(1 bsl 32) - 1,
     ?assertEqual(VerifF(N), sigma(N)),
     sigma_test_loop(VerifF, Count-1).
 

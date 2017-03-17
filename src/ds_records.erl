@@ -238,4 +238,6 @@ ra_fold_f(_, Acc) ->
 mk_field({record_field, _LNfield, {atom, _LN, FieldName}}) ->
     FieldName;
 mk_field({record_field, _LNfield, {atom, _LN, FieldName}, _InitForm}) ->
-    FieldName.
+    FieldName;
+mk_field({typed_record_field, RecordField, _Type}) ->
+    mk_field(RecordField).
