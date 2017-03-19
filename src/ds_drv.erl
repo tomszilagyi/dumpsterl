@@ -45,23 +45,37 @@
 %%   throw an exception in certain cases to exclude those from the spec.
 
 -record(state,
-        { status       %% idle | spec_table | spec_disk_log
-        , handle       %% {table_type, table_name, accessors} | filename
+        { status       % idle | spec_table | spec_disk_log
+        , handle       % #handle{}
         , field_spec
         , fold_fun
         , limit
-        , current_pos  %% table key | disk_log continuation
+        , current_pos  % table key | disk_log continuation
         , progress
         , spec
+        }).
+
+-record(handle,
+        { type         % dets | ets | mnesia
+        , table        % table name/id
+        , filename
+        , accessors
         }).
 
 spec_table(Type, Tab, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
     spec_table(Type, Tab, FieldSpec, Limit).
 
+%% For dets, we also support passing the filename as the table identifier,
+%% in which case we will open and close it for ourselves:
+spec_table(dets, Filename, FieldSpec, Limit) when is_list(Filename) ->
+    Handle = #handle{type=dets, table=undefined, filename=Filename,
+                     accessors=accessors(dets)},
+    State0 = init(Handle, FieldSpec, Limit),
+    run(State0);
 spec_table(Type, Tab, FieldSpec, Limit) ->
-    TabHandle = {Type, Tab, accessors(Type)},
-    State0 = init(TabHandle, FieldSpec, Limit),
+    Handle = #handle{type=Type, table=Tab, accessors=accessors(Type)},
+    State0 = init(Handle, FieldSpec, Limit),
     run(State0).
 
 spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
@@ -80,13 +94,14 @@ run(State0) ->
 
 
 %% Initialize a fold through a table
-init({Type, Tab, Accessors}, FieldSpec0, Limit) ->
+init(#handle{} = Handle0, FieldSpec0, Limit) ->
     ds_records:init(),
-    {FirstF, _ReadF, _NextF} = Accessors,
+    Handle = open_dets_table(Handle0),
+    #handle{table=Tab, accessors={FirstF, _ReadF, _NextF}} = Handle,
     Progress = ds_progress:init(),
     FieldSpec = normalize_spec(FieldSpec0),
     FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
-    #state{status=spec_table, handle={Type, Tab, Accessors}, field_spec=FieldSpec,
+    #state{status=spec_table, handle=Handle, field_spec=FieldSpec,
            fold_fun=FoldFun, limit=Limit, current_pos=FirstF(Tab),
            progress=Progress, spec=ds:new()};
 %% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
@@ -105,15 +120,12 @@ init(Filename, FieldSpec0, Limit) ->
            progress=Progress, spec=ds:new()}.
 
 %% table
-fold(#state{status=spec_table, progress=Progress, spec=Spec0,
-            limit=0} = State) ->
-    Spec = ds_progress:final(Progress, Spec0),
-    State#state{status=idle, spec=Spec};
-fold(#state{status=spec_table, progress=Progress, spec=Spec0,
-            current_pos='$end_of_table'} = State) ->
-    Spec = ds_progress:final(Progress, Spec0),
-    State#state{status=idle, spec=Spec};
-fold(#state{status=spec_table, handle={_Type, Tab, {_FirstF, ReadF, NextF}},
+fold(#state{status=spec_table, current_pos='$end_of_table'} = State) ->
+    finish_fold(State);
+fold(#state{status=spec_table, limit=0} = State) ->
+    finish_fold(State);
+fold(#state{status=spec_table,
+            handle=#handle{table=Tab, accessors={_FirstF, ReadF, NextF}},
             fold_fun=FoldFun, limit=Limit, current_pos=Key,
             progress=Progress0, spec=Spec0} = State) ->
     RecL = ReadF(Tab, Key),
@@ -123,11 +135,8 @@ fold(#state{status=spec_table, handle={_Type, Tab, {_FirstF, ReadF, NextF}},
     State#state{spec=Spec, limit=counter_dec(Limit, RecN),
                 progress=Progress, current_pos=NextF(Tab, Key)};
 %% disk_log
-fold(#state{status=spec_disk_log, progress=Progress, spec=Spec0,
-            limit=0} = State) ->
-    ok = disk_log:close(dlog),
-    Spec = ds_progress:final(Progress, Spec0),
-    State#state{status=idle, spec=Spec};
+fold(#state{status=spec_disk_log, limit=0} = State) ->
+    finish_fold(State);
 fold(#state{status=spec_disk_log, current_pos=Cont0} = State) ->
     case disk_log:chunk(dlog, Cont0) of
         eof ->
@@ -154,6 +163,35 @@ do_fold_disk_log(#state{status=spec_disk_log, fold_fun=FoldFun, limit=Limit,
             Spec = lists:foldl(FoldFun, Spec0, RecL),
             State#state{spec=Spec, progress=Progress, limit=counter_dec(Limit, RecN)}
     end.
+
+finish_fold(#state{status=spec_table, handle=Handle0, progress=Progress,
+                   spec=Spec0} = State) ->
+    Handle = close_dets_table(Handle0),
+    Spec = ds_progress:final(Progress, Spec0),
+    State#state{status=idle, handle=Handle, spec=Spec};
+finish_fold(#state{status=spec_disk_log, progress=Progress, spec=Spec0} = State) ->
+    ok = disk_log:close(dlog),
+    Spec = ds_progress:final(Progress, Spec0),
+    State#state{status=idle, spec=Spec}.
+
+%% If a dets table filename was supplied, we need to open it first.
+open_dets_table(#handle{type=dets, table=undefined, filename=Filename} = Handle)
+  when is_list(Filename) ->
+    {ok, Dets} = dets:open_file(dets_table, [ {file, Filename}
+                                            , {access, read}
+                                            , {repair, false}
+                                            , {keypos, 2} %% FIXME is this always the case?
+                                            ]),
+    Handle#handle{table=Dets};
+open_dets_table(Handle) -> Handle.
+
+%% If the dets table was opened by us, close it.
+close_dets_table(#handle{type=dets, table=Dets, filename=Filename} = Handle)
+  when is_list(Filename) ->
+    ok = dets:close(Dets),
+    Handle#handle{table = undefined};
+close_dets_table(Handle) -> Handle.
+
 
 %% tuple of accessor funs to iterate tables:
 %%

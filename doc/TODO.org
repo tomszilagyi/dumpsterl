@@ -62,7 +62,7 @@ What Dumpsterl itself uses for display purposes:
     beam/source attributes.
     But maybe, MAYBE it would be worth adding anyway?
 
-*** TODO dets tables support
+*** DONE dets tables support
 
 The opening and closing of a dets table should be done as part of
 running the spec function in ds_drv, similar to disk_log files.
@@ -71,6 +71,11 @@ The table parameter could take the filename.
 Is it possible to have a keypos other than 2? If yes, it needs to be a
 (perhaps optional) parameter to the spec function.
 
+*** TODO support 'result' flag
+  Default false. When set to true, return the result of the spec to
+  the caller (as is now). The goal is to reduce clutter in the
+  terminal, as most users will dump the spec to file for opening it in
+  the gui.
 *** TODO support 'keep' flag
 - sampler: provide attribute 'keep' to signify that a particular
   piece of data satisfies certain criteria to be 'interesting'.

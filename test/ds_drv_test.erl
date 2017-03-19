@@ -32,8 +32,21 @@ spec_dets_set_test() ->
                                                  ]),
     ok = dets:from_ets(Dets, Tid),
     test_spec(spec_f(dets, Dets), 100),
-    ok = dets:delete_all_objects(Dets),
     ok = dets:close(Dets),
+    ok = file:delete(DetsFile).
+
+spec_dets_by_filename_set_test() ->
+    ?RNDINIT,
+    Tid = ets:new(ets_test, [{keypos, #rec_test.key}]),
+    populate(ets, Tid, set, 100),
+    DetsFile = "test_table.dets",
+    {ok, Dets} = dets:open_file(dets_test_table, [ {file, DetsFile}
+                                                 , {keypos, #rec_test.key}
+                                                 , {type, set}
+                                                 ]),
+    ok = dets:from_ets(Dets, Tid),
+    ok = dets:close(Dets),
+    test_spec(spec_f(dets, DetsFile), 100),
     ok = file:delete(DetsFile).
 
 spec_disk_log_set_test() ->
