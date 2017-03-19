@@ -3,14 +3,12 @@
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 -export([ %% ets, dets, mnesia
-          spec_tab/4
-        , spec_tab/5
-        , fold_tab/6
+          spec_table/4
+        , spec_table/5
 
           %% disk_log
         , spec_disk_log/3
         , spec_disk_log/4
-        , fold_disk_log/5
         ]).
 
 -ifdef(TEST).
@@ -20,51 +18,79 @@
 %% Go through a table to spec a field based on a limited number
 %% of rows processed:
 %%
-%%   spec_tab(ets, my_table, #my_record.my_field, 1000)
+%%   spec_table(ets, my_table, #my_record.my_field, 1000)
 %%
 %% Sending 0 as FieldSpec will process the whole record.
 %% Sending eg. 'inf' as Limit disables the limit (traverse whole table).
 %%
 %% Advanced usage exmaples:
 %%   progress indicator and output dump (to retain partial results):
-%%     ds_drv:spec_tab(mnesia, payment_rec, #payment_rec.primary_reference, inf, [{progress, 10000}, dump]).
+%%     ds_drv:spec_table(mnesia, payment_rec, #payment_rec.primary_reference,
+%%                       inf, [{progress, 10000}, dump]).
 %%
 %%   chain field references to spec a sub-subfield on nested records:
-%%     ds_drv:spec_tab(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg], inf).
+%%     ds_drv:spec_table(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg], inf).
 %%
 %%   getter function for arbitrary data selection:
 %%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_drv:spec_tab(mnesia, kcase, FieldSpecF, inf).
+%%     ds_drv:spec_table(mnesia, kcase, FieldSpecF, inf).
 %%
 %%   data attributes:
-%%     ds_drv:spec_tab(mnesia, kcase, {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
-%%                     inf, [{progress, 10000}, dump]).
+%%     ds_drv:spec_table(mnesia, kcase,
+%%                       {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
+%%                       inf, [{progress, 10000}, dump]).
 %%
 %%   NB. using a getter fun is slower than a chained reference (list of field numbers),
 %%   so use the fun only where a truly generic accessor is needed. Also, the fun might
 %%   throw an exception in certain cases to exclude those from the spec.
 
-spec_tab(Type, Tab, FieldSpec, Limit) ->
-    fold_tab(fun ds:add/2, ds:new(), Type, Tab, FieldSpec, Limit).
+-record(state,
+        { status       %% idle | spec_table | spec_disk_log
+        , handle       %% {table_type, table_name, accessors} | filename
+        , field_spec
+        , fold_fun
+        , limit
+        , current_pos  %% table key | disk_log continuation
+        , progress
+        , spec
+        }).
 
-spec_tab(Type, Tab, FieldSpec, Limit, Opts) ->
+spec_table(Type, Tab, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
-    fold_tab(fun ds:add/2, ds:new(), Type, Tab, FieldSpec, Limit).
+    spec_table(Type, Tab, FieldSpec, Limit).
 
-
-%% Spec a disk_log; works similar to spec_tab.
-
-spec_disk_log(Filename, FieldSpec, Limit) ->
-    fold_disk_log(fun ds:add/2, ds:new(), Filename, FieldSpec, Limit).
+spec_table(Type, Tab, FieldSpec, Limit) ->
+    TabHandle = {Type, Tab, accessors(Type)},
+    State0 = init(TabHandle, FieldSpec, Limit),
+    run(State0).
 
 spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
-    fold_disk_log(fun ds:add/2, ds:new(), Filename, FieldSpec, Limit).
+    spec_disk_log(Filename, FieldSpec, Limit).
+
+spec_disk_log(Filename, FieldSpec, Limit) ->
+    State0 = init(Filename, FieldSpec, Limit),
+    run(State0).
 
 
-%% Backend function for folding through disk_log files
-%% Useful for Mnesia .DCD and .DCL
-fold_disk_log(Fun, Acc0, Filename, Spec0, Limit) ->
+run(#state{status=idle, spec=Spec}) -> Spec;
+run(State0) ->
+    State = fold(State0),
+    run(State).
+
+
+%% Initialize a fold through a table
+init({Type, Tab, Accessors}, FieldSpec0, Limit) ->
+    ds_records:init(),
+    {FirstF, _ReadF, _NextF} = Accessors,
+    Progress = ds_progress:init(),
+    FieldSpec = normalize_spec(FieldSpec0),
+    FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
+    #state{status=spec_table, handle={Type, Tab, Accessors}, field_spec=FieldSpec,
+           fold_fun=FoldFun, limit=Limit, current_pos=FirstF(Tab),
+           progress=Progress, spec=ds:new()};
+%% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
+init(Filename, FieldSpec0, Limit) ->
     ds_records:init(),
     {ok, dlog} = disk_log:open([ {name, dlog}
                                , {file, Filename}
@@ -72,38 +98,61 @@ fold_disk_log(Fun, Acc0, Filename, Spec0, Limit) ->
                                , {repair, false}
                                ]),
     Progress = ds_progress:init(),
-    Spec = normalize_spec(Spec0),
-    FoldFun = fold_kernel(Fun, Spec),
-    fold_disk_log_loop(FoldFun, Acc0, Limit, Progress, start).
+    FieldSpec = normalize_spec(FieldSpec0),
+    FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
+    #state{status=spec_disk_log, handle=Filename, field_spec=FieldSpec,
+           fold_fun=FoldFun, limit=Limit, current_pos=start,
+           progress=Progress, spec=ds:new()}.
 
-fold_disk_log_loop(_FoldFun, Acc, 0, Progress, _Cont) ->
+%% table
+fold(#state{status=spec_table, progress=Progress, spec=Spec0,
+            limit=0} = State) ->
+    Spec = ds_progress:final(Progress, Spec0),
+    State#state{status=idle, spec=Spec};
+fold(#state{status=spec_table, progress=Progress, spec=Spec0,
+            current_pos='$end_of_table'} = State) ->
+    Spec = ds_progress:final(Progress, Spec0),
+    State#state{status=idle, spec=Spec};
+fold(#state{status=spec_table, handle={_Type, Tab, {_FirstF, ReadF, NextF}},
+            fold_fun=FoldFun, limit=Limit, current_pos=Key,
+            progress=Progress0, spec=Spec0} = State) ->
+    RecL = ReadF(Tab, Key),
+    RecN = length(RecL),
+    Progress = ds_progress:update(Progress0, Spec0, RecN),
+    Spec = lists:foldl(FoldFun, Spec0, RecL),
+    State#state{spec=Spec, limit=counter_dec(Limit, RecN),
+                progress=Progress, current_pos=NextF(Tab, Key)};
+%% disk_log
+fold(#state{status=spec_disk_log, progress=Progress, spec=Spec0,
+            limit=0} = State) ->
     ok = disk_log:close(dlog),
-    ds_progress:final(Progress, Acc);
-fold_disk_log_loop(FoldFun, Acc0, Limit, Progress0, Cont0) ->
+    Spec = ds_progress:final(Progress, Spec0),
+    State#state{status=idle, spec=Spec};
+fold(#state{status=spec_disk_log, current_pos=Cont0} = State) ->
     case disk_log:chunk(dlog, Cont0) of
-        eof -> %% trigger end clause by setting Limit to 0
-            fold_disk_log_loop(FoldFun, Acc0, 0, Progress0, undefined);
+        eof ->
+            fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
         {error, Reason} ->
             io:format("disk_log: chunk failed: ~p~n", [Reason]),
-            %% trigger end clause by setting Limit to 0
-            fold_disk_log_loop(FoldFun, Acc0, 0, Progress0, undefined);
+            fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
         {Cont, RecL} ->
-            do_fold_disk_log(FoldFun, Acc0, Limit, Progress0, Cont, RecL);
+            do_fold_disk_log(State#state{current_pos=Cont}, RecL);
         {Cont, RecL, BadBytes} ->
             io:format("disk_log: skipped ~B bad bytes~n", [BadBytes]),
-            do_fold_disk_log(FoldFun, Acc0, Limit, Progress0, Cont, RecL)
+            do_fold_disk_log(State#state{current_pos=Cont}, RecL)
     end.
 
-do_fold_disk_log(FoldFun, Acc0, Limit, Progress0, Cont, RecL) ->
+do_fold_disk_log(#state{status=spec_disk_log, fold_fun=FoldFun, limit=Limit,
+                        progress=Progress0, spec=Spec0} = State, RecL) ->
     case {ds_progress:get_count(Progress0), RecL} of
         %% ignore log_header entry at the start
         {0, [{log_header, dcd_log, _, _, _, _}|RestRecL]} ->
-            do_fold_disk_log(FoldFun, Acc0, Limit, Progress0, Cont, RestRecL);
+            do_fold_disk_log(State, RestRecL);
         _ ->
             RecN = length(RecL),
-            Progress = ds_progress:update(Progress0, Acc0, RecN),
-            Acc = lists:foldl(FoldFun, Acc0, RecL),
-            fold_disk_log_loop(FoldFun, Acc, counter_dec(Limit, RecN), Progress, Cont)
+            Progress = ds_progress:update(Progress0, Spec0, RecN),
+            Spec = lists:foldl(FoldFun, Spec0, RecL),
+            State#state{spec=Spec, progress=Progress, limit=counter_dec(Limit, RecN)}
     end.
 
 %% tuple of accessor funs to iterate tables:
@@ -129,28 +178,6 @@ accessors(mnesia) ->
     , fun mnesia:dirty_read/2
     , fun mnesia:dirty_next/2
     }.
-
-%% Generic backend function for folding through tables via accessors
-fold_tab(Fun, Acc0, Type, Tab, Spec0, Limit) ->
-    ds_records:init(),
-    {FirstF, _ReadF, _NextF} = Accessors = accessors(Type),
-    Progress = ds_progress:init(),
-    Spec = normalize_spec(Spec0),
-    FoldFun = fold_kernel(Fun, Spec),
-    fold_tab(FoldFun, Acc0, Accessors, Tab, Limit, Progress, FirstF(Tab)).
-
-fold_tab(_FoldFun, Acc, _Accessors, _Tab, 0, Progress, _Key) ->
-    ds_progress:final(Progress, Acc);
-fold_tab(_FoldFun, Acc, _Accessors, _Tab, _Limit, Progress, '$end_of_table') ->
-    ds_progress:final(Progress, Acc);
-fold_tab(FoldFun, Acc0, {_FirstF, ReadF, NextF} = Accessors,
-         Tab, Limit, Progress0, Key) ->
-    RecL = ReadF(Tab, Key),
-    RecN = length(RecL),
-    Progress = ds_progress:update(Progress0, Acc0, RecN),
-    Acc = lists:foldl(FoldFun, Acc0, RecL),
-    fold_tab(FoldFun, Acc, Accessors, Tab,
-             counter_dec(Limit, RecN), Progress, NextF(Tab, Key)).
 
 %% The kernel for folding a list of records into the accumulated spec
 fold_kernel(Fun, {FieldSpec, AttrSpecs}) ->
