@@ -17,12 +17,17 @@ Stuff that definitely needs treatment before the initial public release
   - ds should be an interface module and the only module the user has
     to manually call functions in, eg. ds:shell(), ds:gui(), etc.
 
-*** TODO testing framework
+*** TODO testing
 **** TODO test data model
 
 An exemplary data model should be devised and a data generator written
 that randomly generates instances of that data, for testing purposes.
 
+**** TODO test the terminal support on ansi, cygwin, Eterm, etc.
+
+see /lib/terminfo/* for inspiration
+
+**** TODO test on Windows and Mac (if possible)
 **** DONE foreach_otp ./do_test.sh
 
 A script to exercise all the tests with all Erlang versions of
@@ -253,6 +258,11 @@ see them in action.
   - list of terms suitable to read with file:consult/1
   - binary via term_to_binary
   - csv (maybe limited to cases wherer data is simple eg. integers?)
+- say 'all' instead of count figure when same as super-type
+  (this is not always meaningful, only for leaf nodes that are not
+  generic types)
+- also show percentage in the above cases (where it clearly entails
+  a subset share of a total set)
 
 *** TODO support viewing data in different formats
   e.g. if we suspect that an integer contains bit flags,

@@ -31,16 +31,11 @@ filtermap(Fun, List) ->
 %%
 %% options influencing spec semantics:
 %%
-%%   hll_b : false | integer() between 4 and 16
+%%   hll_b : 'false' | integer() between 4 and 16
 %%     parameter 'b' (bit size of substream count) of hyperloglog
 %%     cardinality estimator
 %%
-%%   mag: integer()
-%%     subgrouping of numerals by magnitude
-%%       0: turn off subgrouping;
-%%       N: subgroup N orders of magnitude into one (defaults to 3)
-%%
-%%   rec_attrs: true | false | force
+%%   rec_attrs: 'true' | 'false' | 'force'
 %%     collect record attributes and enrich the spec with those
 %%       referenced in the data.
 %%        true: collect data once at the beginning of first run
@@ -50,33 +45,36 @@ filtermap(Fun, List) ->
 %%              NB. just including rec_attrs (with no value) in the
 %%              options list is equivalent to {rec_attrs, force}.
 %%
-%%   samples: false | N (positive integer) | infinity
+%%   samples: 'false' | N (positive integer) | 'infinity'
 %%       maximum number of samples to collect (per node)
-%%
-%%   strlen: true | false
-%%     subgrouping of strings by length
 %%
 %% other options:
 %%
-%%   dump: filename() | false
-%%     dump the accumulated spec on each progress tick (if progress
-%%       output is enabled) and at the end.
-%%       false: no dump is written
-%%       Filename: the accumulated spec is dumped as an Erlang binary
-%%         to this filename on each progress tick (dot or number) and
-%%         at the end.
+%%   dump: filename() | 'false'
+%%     dump the accumulated spec on each progress update, but at most
+%%       once every ten seconds (if progress output is enabled),
+%%       and at the end.
+%%     - false: no dump is written
+%%     - Filename: the accumulated spec is dumped as an Erlang binary
+%%         to this filename on each progress update and when finished.
 %%         Defaults to "ds.bin" if option is set with no value.
-%%
-%%   progress: pos_integer() | false
-%%     output progress information and (if dump is enabled) write dumps
-%%       false: no output
-%%       N: output progress info every N samples
 %%
 %%   mnesia_dir: dirname()
 %%     The name of the mnesia directory where table data files are stored.
 %%     This option is useful if the Erlang node running dumpsterl does not
 %%     run a Mnesia instance where the tables being read belong, but has
 %%     access to the database filesystem.
+%%
+%%   term: atom() | string()
+%%     terminal setting useful to override the $TERM environment variable
+%%     (e.g. set it to 'dumb' to forcibly disable progress line rewrites)
+%%
+%%   progress: number() | false
+%%     output progress information and (if dump is enabled) write dumps
+%%       false: no output
+%%       T: update progress info every T seconds
+%%          (achieved update frequency is limited by read granularity)
+%%
 
 opts() ->
     %% The following table specifies the options interpreted.
@@ -91,10 +89,11 @@ opts() ->
     [ {dump,         false,        "ds.bin"}
     , {hll_b,        8,            8}
     , {mag,          0,            3}
-    , {progress,     false,        100000}
+    , {progress,     false,        1}
     , {samples,      16,           16}
     , {strlen,       false,        true}
     , {rec_attrs,    true,         force}
+    , {term,         undefined,    "vt100"}
     , {mnesia_dir,   undefined,    undefined}
     ].
 
@@ -118,7 +117,10 @@ normalize_opt_f(Opt, Opts) ->
     Value0 = try getopt(Key, Opts)
              catch error:badarg -> true % unknown option with no value
              end,
-    try normalize_opt(Key, Value0)
+    try case normalize_opt(Key, Value0) of
+            {true, NewValue} -> {true, {Key, NewValue}};
+            R -> R
+        end
     catch _:_ ->
             Value = default_opt(Key, Value0),
             {true, proplists:property(Key, Value)}
@@ -130,29 +132,27 @@ default_opt(Key, Value) ->
               [Key, Value, Default]),
     Default.
 
-%% Return true to keep or {true, NewValue} to normalize (change) the value
-%% of options; return false to skip/ignore; throw errors or exceptions if
-%% data is invalid.
+%% Return true to keep or {true, {Key, NewValue}} to normalize (change) the
+%% value of an option; return false to skip/ignore; throw errors or exceptions
+%% if data is invalid.
 normalize_opt(dump, S) ->
     true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), true;
 normalize_opt(hll_b, false) -> true;
 normalize_opt(hll_b, I) ->
     true = is_integer(I) andalso I >= 4 andalso I =< 16, true;
-normalize_opt(mag, I) ->
-    true = is_integer(I) andalso I >= 0, true;
+normalize_opt(mnesia_dir, D) ->
+    true = filelib:is_dir(D), true;
 normalize_opt(progress, false) -> true;
 normalize_opt(progress, P) ->
-    true = is_integer(P) andalso P > 0, true;
+    true = is_number(P) andalso P > 0, true;
+normalize_opt(rec_attrs, A) ->
+    true = lists:member(A, [true, false, force]), true;
 normalize_opt(samples, false) -> true;
 normalize_opt(samples, infinity) -> true;
 normalize_opt(samples, N) ->
     true = is_integer(N) andalso N > 0, true;
-normalize_opt(strlen, B) ->
-    true = is_boolean(B), true;
-normalize_opt(rec_attrs, A) ->
-    true = lists:member(A, [true, false, force]), true;
-normalize_opt(mnesia_dir, D) ->
-    true = filelib:is_dir(D), true;
+normalize_opt(term, T) when is_atom(T) -> {true, atom_to_list(T)};
+normalize_opt(term, T) -> true = is_list(T), true;
 normalize_opt(Key, _Value) ->
     io:format("** ignoring unknown option: ~p~n", [Key]),
     false.
@@ -197,11 +197,13 @@ normalize_opts_test() ->
                           , dump
                           , {no, [such], <<"option">>}
                           , {mnesia_dir, "."}
+                          , {term, vt100}
                           , hll_b
                           ]),
     ?assertEqual(100, getopt(samples, Opts)),
     ?assertEqual("ds.bin", getopt(dump, Opts)),
     ?assertEqual(".", getopt(mnesia_dir, Opts)),
+    ?assertEqual("vt100", getopt(term, Opts)),
     ?assertEqual(8, getopt(hll_b, Opts)).
 
 -endif.
