@@ -50,14 +50,14 @@ add({V, A}, Sampler) ->
 %% hash function (erlang:phash2 with the Range set to 2^32 is recommended).
 %% In case of doubt, just use add/2 above.
 add_hash(_Data, undefined) -> undefined;
-add_hash({Hash, VA}, #sampler{capacity = Capacity,
-                              size = Size0, tree=Tree0,
-                              max_hash = MaxHash0} = Sampler)
+add_hash({Hash, {V, A}}, #sampler{capacity = Capacity,
+                                  size = Size0, tree=Tree0,
+                                  max_hash = MaxHash0} = Sampler)
   when Size0 < Capacity ->
-    {Tree, Size} = update_tree(Hash, VA, Tree0, Size0),
+    {Tree, Size} = update_tree(Hash, {V, A}, Tree0, Size0),
     MaxHash = max(Hash, MaxHash0),
     Sampler#sampler{size = Size, max_hash = MaxHash, tree = Tree};
-add_hash({Hash, _VA}, #sampler{max_hash = MaxHash} = Sampler)
+add_hash({Hash, {_V,_A}}, #sampler{max_hash = MaxHash} = Sampler)
   when Hash > MaxHash ->
     Sampler;
 add_hash({Hash, {V, A}}, #sampler{max_hash = MaxHash,
@@ -67,13 +67,13 @@ add_hash({Hash, {V, A}}, #sampler{max_hash = MaxHash,
     PV = ds_pvattrs:add(A, PV0),
     Tree = gb_trees:update(Hash, {V, PV}, Tree0),
     Sampler#sampler{tree = Tree};
-add_hash({Hash, VA}, #sampler{capacity = Capacity,
-                              size = Size0, tree = Tree0} = Sampler) ->
-    {Tree1, Size1} = update_tree(Hash, VA, Tree0, Size0),
+add_hash({Hash, {V, A}}, #sampler{capacity = Capacity,
+                                  size = Size0, tree = Tree0} = Sampler) ->
+    {Tree1, Size1} = update_tree(Hash, {V, A}, Tree0, Size0),
     if Size1 > Capacity ->
             {_, Value, Tree} = gb_trees:take_largest(Tree1),
             Size = case Value of
-                       {_V,_PV} -> Size1 - 1;
+                       {_Vmax,_PV} -> Size1 - 1;
                        Bucket -> Size1 - length(Bucket)
                    end,
             {MaxHash, _} = gb_trees:largest(Tree),
@@ -118,7 +118,13 @@ join(#sampler{capacity = Capacity1} = Sampler1,
      #sampler{capacity = Capacity2} = Sampler2) when Capacity2 > Capacity1 ->
     join(Sampler2, Sampler1);
 join(Sampler1, #sampler{tree = Tree2}) ->
-    lists:foldl(fun add_hash/2, Sampler1, gb_trees:to_list(Tree2)).
+    lists:foldl(fun({_Hash, {_V,_A}}=Data, Sampler) ->
+                        add_hash(Data, Sampler);
+                   ({Hash, Bucket}, Sampler) when is_list(Bucket) ->
+                        lists:foldl(fun(VA, Acc) ->
+                                            add_hash({Hash, VA}, Acc)
+                                    end, Sampler, Bucket)
+                end, Sampler1, gb_trees:to_list(Tree2)).
 
 %% Return a list of {V, PV}
 get_samples(undefined) -> [];
@@ -228,5 +234,45 @@ join_test() ->
         [ds_pvattrs:get_count(PV) || {N, PV} <- get_samples(Sj2), N < 1000],
     [?assertEqual(2, Count) || Count <- CountsFromS1],
     ?print(Sj2).
+
+join_with_collisions_test() ->
+    L1 = [ % collide with self
+             22722,  266086
+         ,   26544,  217817
+         ,   33702,   44741
+         ,   38988,  125056
+          % collide with L2
+         ,  302781
+         ,  302800
+         ,   70024, 1918936
+         , 1074149, 2805927
+         ],
+    L2 = [ % collide with self
+            47282,   81624
+         ,  125915,  283130
+         ,  300486,  879671
+         ,  302126,  905421
+           % collide with L1
+         ,  868970
+         ,  362107
+         , 1918936, 4696183
+         , 2805927, 9580072
+         ],
+
+    %% we want all samples to fit into one sampler
+    TotalCap = length(L1) + length(L2),
+
+    S1 = lists:foldl(fun add/2, new(TotalCap), [{N, []} || N <- L1]),
+    ?print(S1),
+    S2 = lists:foldl(fun add/2, new(TotalCap), [{N, []} || N <- L2]),
+    ?print(S2),
+
+    Sj = join(S1, S2),
+    ?print(Sj),
+
+    RefSamples = lists:usort(L1 ++ L2),
+    JoinedSamples = get_samples(Sj),
+    ?assertEqual(length(RefSamples), length(JoinedSamples)),
+    ?assertEqual(RefSamples, lists:sort([V || {V,_PV} <- JoinedSamples])).
 
 -endif.
