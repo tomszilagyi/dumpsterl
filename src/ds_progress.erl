@@ -3,6 +3,7 @@
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 -export([ init/0
+        , init/1
         , get_count/1
         , update/3
         , final/2

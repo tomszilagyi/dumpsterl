@@ -58,6 +58,10 @@ filtermap(Fun, List) ->
 %%     - Filename: the accumulated spec is dumped as an Erlang binary
 %%         to this filename on each progress update and when finished.
 %%         Defaults to "ds.bin" if option is set with no value.
+%%       NB. in case of parallel probe execution (see `procs` option), only
+%%         the master process dumps its spec. With procs=N, only 1/N of the
+%%         whole spec is periodically dumped. Naturally, the entire result
+%%         is collected and dumped on completion (or ds-shell interruption).
 %%
 %%   mnesia_dir: dirname()
 %%     The name of the mnesia directory where table data files are stored.
@@ -65,9 +69,9 @@ filtermap(Fun, List) ->
 %%     run a Mnesia instance where the tables being read belong, but has
 %%     access to the database filesystem.
 %%
-%%   term: atom() | string()
-%%     terminal setting useful to override the $TERM environment variable
-%%     (e.g. set it to 'dumb' to forcibly disable progress line rewrites)
+%%   procs: pos_integer()
+%%     Number of parallel processes to use when running the probe.
+%%     Defaults to the number of logical processors as reported by ERTS.
 %%
 %%   progress: number() | false
 %%     output progress information and (if dump is enabled) write dumps
@@ -75,6 +79,9 @@ filtermap(Fun, List) ->
 %%       T: update progress info every T seconds
 %%          (achieved update frequency is limited by read granularity)
 %%
+%%   term: atom() | string()
+%%     terminal setting useful to override the $TERM environment variable
+%%     (e.g. set it to 'dumb' to forcibly disable progress line rewrites)
 
 opts() ->
     %% The following table specifies the options interpreted.
@@ -88,13 +95,12 @@ opts() ->
     %% name          undefined     novalue
     [ {dump,         false,        "ds.bin"}
     , {hll_b,        8,            8}
-    , {mag,          0,            3}
-    , {progress,     false,        1}
-    , {samples,      16,           16}
-    , {strlen,       false,        true}
-    , {rec_attrs,    true,         force}
-    , {term,         undefined,    "vt100"}
     , {mnesia_dir,   undefined,    undefined}
+    , {procs,        cores(),      cores()}
+    , {progress,     false,        1}
+    , {rec_attrs,    true,         force}
+    , {samples,      16,           16}
+    , {term,         undefined,    "vt100"}
     ].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
@@ -142,6 +148,8 @@ normalize_opt(hll_b, I) ->
     true = is_integer(I) andalso I >= 4 andalso I =< 16, true;
 normalize_opt(mnesia_dir, D) ->
     true = filelib:is_dir(D), true;
+normalize_opt(procs, N) ->
+    true = is_integer(N) andalso N > 0, true;
 normalize_opt(progress, false) -> true;
 normalize_opt(progress, P) ->
     true = is_number(P) andalso P > 0, true;
@@ -168,6 +176,7 @@ getopt(Opt, Opts) ->
         Value     -> Value
     end.
 
+cores() -> erlang:system_info(logical_processors).
 
 %% Tests
 -ifdef(TEST).

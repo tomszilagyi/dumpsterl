@@ -8,6 +8,7 @@
         ]).
 
 -ifdef(TEST).
+-export([ eq/2 ]).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -106,5 +107,14 @@ pt_join(PVS0, _PVS1) -> PVS0.
 
 %% Tests
 -ifdef(TEST).
+
+%% Return true iff two stats instances are equivalent.
+%% The actual term-level representation (sampler gb_trees, etc.)
+%% may be different depending on the order of add/join operations
+%% that yielded the two instances.
+eq(#stats{count = Count, pts = Pts, sampler = Sampler0, hyperloglog = HLL},
+   #stats{count = Count, pts = Pts, sampler = Sampler1, hyperloglog = HLL}) ->
+    ds_sampler:get_samples(Sampler0) =:= ds_sampler:get_samples(Sampler1);
+eq(_Stats0, _Stats1) -> false.
 
 -endif.

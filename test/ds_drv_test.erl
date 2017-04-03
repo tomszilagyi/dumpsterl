@@ -26,6 +26,7 @@ spec_dets_set_test() ->
     Tid = ets:new(ets_test, [{keypos, #rec_test.key}]),
     populate(ets, Tid, set, 100),
     DetsFile = "test_table.dets",
+    file:delete(DetsFile),
     {ok, Dets} = dets:open_file(dets_test_table, [ {file, DetsFile}
                                                  , {keypos, #rec_test.key}
                                                  , {type, set}
@@ -40,6 +41,7 @@ spec_dets_by_filename_set_test() ->
     Tid = ets:new(ets_test, [{keypos, #rec_test.key}]),
     populate(ets, Tid, set, 100),
     DetsFile = "test_table.dets",
+    file:delete(DetsFile),
     {ok, Dets} = dets:open_file(dets_test_table, [ {file, DetsFile}
                                                  , {keypos, #rec_test.key}
                                                  , {type, set}
@@ -52,6 +54,7 @@ spec_dets_by_filename_set_test() ->
 spec_disk_log_set_test() ->
     ?RNDINIT,
     LogFile = "test_disk_log.bin",
+    file:delete(LogFile),
     {ok, Log} = disk_log:open([ {name, test_disk_log}
                               , {file, LogFile}
                               , {mode, read_write}
@@ -104,7 +107,11 @@ test_spec(TestFun, NRecs) ->
     {'T', _,
      [{tuple, _,
        [{{record, {rec_test, 5}}, {StatsT, _ExtT}, SpecFields}]}]} = SpecT,
-    ?assertEqual([Spec0, Spec1, Spec2, Spec3], SpecFields),
+
+    ?assert(ds:eq(Spec0, lists:nth(1, SpecFields))),
+    ?assert(ds:eq(Spec1, lists:nth(2, SpecFields))),
+    ?assert(ds:eq(Spec2, lists:nth(3, SpecFields))),
+    ?assert(ds:eq(Spec3, lists:nth(4, SpecFields))),
     ?assertEqual(NRecs, ds_stats:get_count(StatsT)).
 
 %% Test utility functions

@@ -87,11 +87,16 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
   This attribute would ensure that the data is kept stored
   regardless of sampling allowances. Implement with a dedicated
   sampler initialized with capacity 'infinity'.
-*** TODO parallelize
+*** DONE parallelize
   send data to N trees in round-robin fashion, then
   - join results regularly for each chunk, OR
   - dump each separately (e.g. ds.bin.k) and join k=0..N at the end
-    (N > number of processors)
+    (N > number of processors) OR
+  - do interim dumps from one process only (the master),
+    join with results from other threads and dump that as final
+    result.
+
+  The last option above has been implemented.
 
 *** TODO probe command shell to control the probe driver
  - print progress updates using vt100 rewrite-last-line technique

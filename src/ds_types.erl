@@ -6,8 +6,9 @@
         , attributes/2
         , attribute_to_string/2
         , subtype/2
-        , ext_data/1
-        , ext_data/3
+        , ext_new/1
+        , ext_add/3
+        , ext_join/3
         ]).
 
 -ifdef(TEST).
@@ -165,21 +166,20 @@ dyn_record(_V) -> false.
 %% class-specific extra data
 
 %% class-specific initializers
-ext_data({record, RecId}) ->
+ext_new({record, RecId}) ->
     case ds_records:lookup(RecId) of
         false -> [];
         RAs -> RAs
     end;
-ext_data(_Class) -> [].
+ext_new(_Class) -> [].
 
 %% class-specific per-term updaters
-ext_data(VA, atom, Ext) -> ext_data_atom(VA, Ext);
-ext_data(VA, nonempty_list, Ext) -> ext_data_nonempty_list(VA, Ext);
-ext_data(_V,_Class, Ext) -> Ext.
-
+ext_add(VA, atom, Ext) -> ext_add_atom(VA, Ext);
+ext_add(VA, nonempty_list, Ext) -> ext_add_nonempty_list(VA, Ext);
+ext_add(_V,_Class, Ext) -> Ext.
 
 %% For atoms, maintain a dictionary of per-value stats for each value
-ext_data_atom({V, Attrs}, Ext) ->
+ext_add_atom({V, Attrs}, Ext) ->
     PVS = case orddict:find(V, Ext) of
               error -> ds_pvattrs:new(Attrs);
               {ok, PVS0} -> ds_pvattrs:add(Attrs, PVS0)
@@ -187,10 +187,70 @@ ext_data_atom({V, Attrs}, Ext) ->
     orddict:store(V, PVS, Ext).
 
 %% For lists, maintain a histogram of lengths
-ext_data_nonempty_list({V,_Attrs}, Ext) ->
+ext_add_nonempty_list({V,_Attrs}, Ext) ->
     orddict:update_counter(length(V), 1, Ext).
+
+%% class-specific joins
+ext_join(atom, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
+ext_join(nonempty_list, Ext1, Ext2) -> ext_join_nonempty_list(Ext1, Ext2);
+ext_join(_Class, Ext1,_Ext2) -> Ext1.
+
+ext_join_atom(Ext1, Ext2) ->
+    orddict:merge(fun(_K, V1, V2) -> ds_pvattrs:join(V1, V2) end, Ext1, Ext2).
+
+ext_join_nonempty_list(Ext1, Ext2) ->
+    orddict:merge(fun(_K, N1, N2) -> N1 + N2 end, Ext1, Ext2).
 
 %% Tests
 -ifdef(TEST).
+
+ext_atom_test() ->
+    C = atom,
+    E0 = ext_new(C),
+    E1 = ext_add({one, [{ts, 0}, {key, x}]}, C, E0),
+    E2 = ext_add({two, [{ts, 0}, {key, w}]}, C, E1),
+    E3 = ext_add({one, [{ts, 3}, {key, a}]}, C, E2),
+
+    [{one, PV1}, {two, PV2}] = E3,
+    ?assertEqual(2, ds_pvattrs:get_count(PV1)),
+    ?assertEqual({{0,x}, {3,a}}, ds_pvattrs:get_timespan(PV1)),
+    ?assertEqual(1, ds_pvattrs:get_count(PV2)),
+    ?assertEqual({{0,w}, {0,w}}, ds_pvattrs:get_timespan(PV2)),
+
+    E4 = ext_add({one, [{ts, 5}, {key, p}]}, C, E0),
+    E5 = ext_add({zzz, [{ts, 8}, {key, q}]}, C, E4),
+    E6 = ext_add({zzz, [{ts, 8}, {key, r}]}, C, E5),
+    [{one, PV3}, {zzz, PV4}] = E6,
+    ?assertEqual(1, ds_pvattrs:get_count(PV3)),
+    ?assertEqual({{5,p}, {5,p}}, ds_pvattrs:get_timespan(PV3)),
+    ?assertEqual(2, ds_pvattrs:get_count(PV4)),
+    ?assertEqual({{8,q}, {8,r}}, ds_pvattrs:get_timespan(PV4)),
+
+    E7 = ext_join(C, E3, E6),
+    [{one, PV5}, {two, PV6}, {zzz, PV7}] = E7,
+    ?assertEqual(3, ds_pvattrs:get_count(PV5)),
+    ?assertEqual({{0,x}, {5,p}}, ds_pvattrs:get_timespan(PV5)),
+    ?assertEqual(1, ds_pvattrs:get_count(PV6)),
+    ?assertEqual({{0,w}, {0,w}}, ds_pvattrs:get_timespan(PV6)),
+    ?assertEqual(2, ds_pvattrs:get_count(PV7)),
+    ?assertEqual({{8,q}, {8,r}}, ds_pvattrs:get_timespan(PV7)).
+
+ext_nonempty_list_test() ->
+    C = nonempty_list,
+    E0 = ext_new(C),
+    E1 = ext_add({[a,b,c], []}, C, E0),
+    E2 = ext_add({[6,7,8], []}, C, E1),
+    E3 = ext_add({[9,10], []}, C, E2),
+    E4 = ext_add({[list_item], []}, C, E3),
+    ?assertEqual([{1,1}, {2,1}, {3,2}], E4),
+
+    E5 = ext_add({[some, items], []}, C, E0),
+    E6 = ext_add({[x], []}, C, E5),
+    E7 = ext_add({[y], []}, C, E6),
+    E8 = ext_add({[z], []}, C, E7),
+    ?assertEqual([{1,3}, {2,1}], E8),
+
+    E9 = ext_join(C, E4, E8),
+    ?assertEqual([{1,4}, {2,2}, {3,2}], E9).
 
 -endif.

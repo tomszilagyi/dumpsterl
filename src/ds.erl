@@ -9,9 +9,15 @@
         , new/0
         , new/1
         , new/2
+        , join/2
         , compact/1
         , join_up/1
         ]).
+
+-ifdef(TEST).
+-export([ eq/2 ]).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% A data spec is a list of type specs.
 %% It is most often hierarchically nested, hence we have
@@ -43,7 +49,7 @@
 new() -> new('T').
 
 new(Class) ->
-    Data = {ds_stats:new(), ds_types:ext_data(Class)},
+    Data = {ds_stats:new(), ds_types:ext_new(Class)},
     {Class, Data, []}.
 
 %% Initialize, immediately adding one data term
@@ -67,7 +73,7 @@ add(VA, {Class, Data0, SubSpec}, SubType) -> % abstract type
     {Class, Data0, merge(VA, SubType, SubSpec)}.
 
 update(VA, Class, {Stats, Ext}) ->
-    {ds_stats:add(VA, Stats), ds_types:ext_data(VA, Class, Ext)}.
+    {ds_stats:add(VA, Stats), ds_types:ext_add(VA, Class, Ext)}.
 
 %% choose subspec given by Class or create it from scratch,
 %% add V to it and return the resulting Spec.
@@ -98,6 +104,27 @@ merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
     [ListSpec, TailSpec].
 
 
+%% Join two spec trees into one.
+%% Depending on class kind, subspec trees are either joined (by class)
+%% or zipped (by position).
+join({Class, {Stats1, Ext1}, ChildL1},
+     {Class, {Stats2, Ext2}, ChildL2}) ->
+    ChildL = case ds_types:kind(Class) of
+                 generic -> lists:zipwith(fun join/2, ChildL1, ChildL2);
+                 _       -> join_specs(ChildL1, ChildL2)
+             end,
+    {Class,
+     {ds_stats:join(Stats1, Stats2), ds_types:ext_join(Class, Ext1, Ext2)},
+     ChildL}.
+
+join_specs(Acc, []) -> Acc;
+join_specs(Acc0, [{Class,_Data,_ChildL}=Spec | Rest]) ->
+    Acc = case lists:keyfind(Class, 1, Acc0) of
+              false   -> [Spec | Acc0];
+              AccSpec -> lists:keystore(Class, 1, Acc0, join(AccSpec, Spec))
+          end,
+    join_specs(Acc, Rest).
+
 %% Compact the tree by cutting unnecessary abstract types
 %% (those having a single child and no terms captured themselves)
 %% from the tree. E.g. if all terms are tuples of three, the tree
@@ -118,7 +145,7 @@ compact({Class, Data, SubSpec}) ->
 
 %% For performance, abstract type nodes do not update their data
 %% when collecting terms, since the same information will be stored
-%% further down the tree. Before evaulating/visualizing the tree,
+%% further down the tree. Before evaluating/visualizing the tree,
 %% this function should be used to propagate the data upwards so
 %% the abstract nodes also have all the statistics.
 join_up({Class, Data0, SubSpec0}) ->
@@ -131,5 +158,29 @@ join_up({Class, Data0, SubSpec0}) ->
 
 join_data(Data, SubSpec) -> lists:foldl(fun join_data_f/2, Data, SubSpec).
 
+%% NB. do not propagate Ext upwards, since that is class-specific.
 join_data_f({_Class, {Stats1,_Ext1}, _SubSpec}, {Stats0, Ext0}) ->
     {ds_stats:join(Stats0, Stats1), Ext0}.
+
+
+%% Tests
+-ifdef(TEST).
+
+%% Return true iff two spec instances are equivalent.
+%% The actual term-level representation may be different, hence this function.
+eq({Class, {Stats1, Ext}, ChL1},
+   {Class, {Stats2, Ext}, ChL2}) ->
+
+    ChildrenEq =
+        case lists:usort(lists:zipwith(fun eq/2,
+                                       lists:sort(ChL1), lists:sort(ChL2))) of
+            [] -> true;
+            [true] -> true;
+            _ -> false
+        end,
+    ds_stats:eq(Stats1, Stats2) andalso
+        length(ChL1) =:= length(ChL2) andalso
+        ChildrenEq;
+eq(_Spec0, _Spec1) -> false.
+
+-endif.

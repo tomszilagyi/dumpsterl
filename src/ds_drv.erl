@@ -11,6 +11,12 @@
         , spec_disk_log/4
         ]).
 
+%% for spawn_link:
+-export([ procs_slave/3 ]).
+
+%%-define(DEBUG, true).
+-include("debug.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -46,13 +52,16 @@
 
 -record(state,
         { status       % idle | spec_table | spec_disk_log
-        , handle       % #handle{}
+        , handle       % #handle{} | filename()
         , field_spec
         , fold_fun
         , limit
         , current_pos  % table key | disk_log continuation
         , progress
         , spec
+        , n_procs      % number of parallel processes, including master
+        , master_pid
+        , next_pid
         }).
 
 -record(handle,
@@ -61,6 +70,90 @@
         , filename
         , accessors
         }).
+
+%% Entry point of parallel processing probe runner;
+%% start of master that runs in-process in the drv
+procs_init(#state{current_pos = Pos, limit = Limit} = State) ->
+    NProcs = ds_opts:getopt(procs),
+    if NProcs > 1 -> io:format("running probe on ~B parallel processes.\n", [NProcs]);
+       true -> ok
+    end,
+    MasterPid = self(),
+    ?debug("init master ~p", [MasterPid]),
+    %% inhibit progress output in slaves:
+    SlaveState = State#state{progress=ds_progress:init(false)},
+    NextPid = procs_spawn_slave(SlaveState, MasterPid, NProcs),
+    MasterPid ! {proc, Pos, Limit, 0}, % Trigger the processing
+    procs_master_loop(State#state{master_pid = MasterPid, next_pid = NextPid,
+                                  progress=ds_progress:init(), n_procs = NProcs}).
+
+%% The NextPid of the last slave is MasterPid
+procs_spawn_slave(_State, MasterPid, 1) -> MasterPid;
+procs_spawn_slave(State, MasterPid, N) ->
+    spawn_link(?MODULE, procs_slave, [State, MasterPid, N-1]).
+
+%% Entry point of slave process
+procs_slave(State, MasterPid, N) ->
+    ?debug("init slave ~p", [self()]),
+    NextPid = procs_spawn_slave(State, MasterPid, N),
+    procs_slave_loop(State#state{master_pid = MasterPid, next_pid = NextPid}).
+
+procs_master_loop(#state{status = idle, n_procs = 1, spec = Spec0, progress = Progress}) ->
+    Spec = ds_progress:final(Progress, Spec0),
+    Spec;
+procs_master_loop(#state{master_pid =_MasterPid, next_pid = NextPid,
+                         spec=Spec0, progress = Progress0, n_procs = NProcs} = State0) ->
+    receive
+        {proc, Pos0, Limit0, AccRecN} ->
+            Progress = ds_progress:update(Progress0, Spec0, AccRecN),
+            State1 = State0#state{current_pos=Pos0, limit=Limit0, progress=Progress},
+            case prep_fold(State1) of
+                #state{status=idle} = State2 ->
+                    ?debug("master: prep_fold -> idle", []),
+                    NextPid ! get_result,
+                    procs_master_loop(State2);
+                {#state{current_pos=NextPos, limit=Limit} = State2, RecL, RecN} ->
+                    NextPid ! {proc, NextPos, Limit, RecN},
+                    State = fold(State2, RecL),
+                    procs_master_loop(State)
+            end;
+        {done, AccRecN} ->
+            ?debug("master: got 'done', AccRecN=~p", [AccRecN]),
+            Progress = ds_progress:update(Progress0, Spec0, AccRecN),
+            NextPid ! get_result,
+            procs_master_loop(State0#state{status=idle, progress=Progress});
+        {result,_Pid, SlaveSpec} ->
+            ?debug("master: result from ~p, n_procs: ~p", [_Pid, NProcs]),
+            Spec = ds:join(Spec0, SlaveSpec),
+            procs_master_loop(State0#state{spec=Spec, n_procs = NProcs-1});
+        _Msg ->
+            ?debug("master: got msg: ~p", [_Msg]),
+            procs_master_loop(State0)
+    end.
+
+procs_slave_loop(#state{master_pid = MasterPid, next_pid = NextPid,
+                        spec = Spec} = State0) ->
+    receive
+        {proc, Pos0, Limit0, AccRecN} ->
+            State1 = State0#state{current_pos=Pos0, limit=Limit0},
+            case prep_fold(State1) of
+                #state{status=idle} = State2 ->
+                    ?debug("slave_loop ~p: prep_fold -> idle", [self()]),
+                    MasterPid ! {done, AccRecN},
+                    procs_slave_loop(State2);
+                {#state{current_pos=NextPos, limit=Limit} = State2, RecL, RecN} ->
+                    NextPid ! {proc, NextPos, Limit, AccRecN + RecN},
+                    State = fold(State2, RecL),
+                    procs_slave_loop(State)
+            end;
+        get_result ->
+            NextPid ! get_result,
+            MasterPid ! {result, self(), Spec};
+        _Msg ->
+            ?debug("slave ~p: got msg: ~p", [self(), _Msg]),
+            procs_slave_loop(State0)
+    end.
+
 
 spec_table(Type, Tab, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
@@ -71,26 +164,20 @@ spec_table(Type, Tab, FieldSpec, Limit, Opts) ->
 spec_table(dets, Filename, FieldSpec, Limit) when is_list(Filename) ->
     Handle = #handle{type=dets, table=undefined, filename=Filename,
                      accessors=accessors(dets)},
-    State0 = init(Handle, FieldSpec, Limit),
-    run(State0);
+    State = init(Handle, FieldSpec, Limit),
+    procs_init(State);
 spec_table(Type, Tab, FieldSpec, Limit) ->
     Handle = #handle{type=Type, table=Tab, accessors=accessors(Type)},
-    State0 = init(Handle, FieldSpec, Limit),
-    run(State0).
+    State = init(Handle, FieldSpec, Limit),
+    procs_init(State).
 
 spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
     spec_disk_log(Filename, FieldSpec, Limit).
 
 spec_disk_log(Filename, FieldSpec, Limit) ->
-    State0 = init(Filename, FieldSpec, Limit),
-    run(State0).
-
-
-run(#state{status=idle, spec=Spec}) -> Spec;
-run(State0) ->
-    State = fold(State0),
-    run(State).
+    State = init(Filename, FieldSpec, Limit),
+    procs_init(State).
 
 
 %% Initialize a fold through a table
@@ -98,12 +185,11 @@ init(#handle{} = Handle0, FieldSpec0, Limit) ->
     ds_records:init(),
     Handle = open_dets_table(Handle0),
     #handle{table=Tab, accessors={FirstF, _ReadF, _NextF}} = Handle,
-    Progress = ds_progress:init(),
     FieldSpec = normalize_spec(FieldSpec0),
     FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
     #state{status=spec_table, handle=Handle, field_spec=FieldSpec,
            fold_fun=FoldFun, limit=Limit, current_pos=FirstF(Tab),
-           progress=Progress, spec=ds:new()};
+           spec=ds:new()};
 %% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
 init(Filename, FieldSpec0, Limit) ->
     ds_records:init(),
@@ -112,67 +198,74 @@ init(Filename, FieldSpec0, Limit) ->
                                , {mode, read_only}
                                , {repair, false}
                                ]),
-    Progress = ds_progress:init(),
     FieldSpec = normalize_spec(FieldSpec0),
     FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
     #state{status=spec_disk_log, handle=Filename, field_spec=FieldSpec,
-           fold_fun=FoldFun, limit=Limit, current_pos=start,
-           progress=Progress, spec=ds:new()}.
+           fold_fun=FoldFun, limit=Limit, current_pos=start, spec=ds:new()}.
+
+%% Prepare a fold based on current state. Result is either
+%% - #state{status=idle} in case we are done;
+%% - {#state{current_pos=NextPos, limit=Limit}, RecL, RecN} which must be processed further:
+%%   NextPos, Limit and RecN are sent to the next process in the process ring,
+%%   while RecL is folded into the spec built by the current process.
 
 %% table
-fold(#state{status=spec_table, current_pos='$end_of_table'} = State) ->
+prep_fold(#state{status=spec_table, current_pos='$end_of_table'} = State) ->
     finish_fold(State);
-fold(#state{status=spec_table, limit=0} = State) ->
+prep_fold(#state{status=spec_table, limit=0} = State) ->
     finish_fold(State);
-fold(#state{status=spec_table,
-            handle=#handle{table=Tab, accessors={_FirstF, ReadF, NextF}},
-            fold_fun=FoldFun, limit=Limit, current_pos=Key,
-            progress=Progress0, spec=Spec0} = State) ->
+prep_fold(#state{status=spec_table,
+                 handle=#handle{table=Tab, accessors={_FirstF, ReadF, NextF}},
+                 current_pos=Key, limit=Limit} = State) ->
     RecL = ReadF(Tab, Key),
     RecN = length(RecL),
-    Progress = ds_progress:update(Progress0, Spec0, RecN),
-    Spec = lists:foldl(FoldFun, Spec0, RecL),
-    State#state{spec=Spec, limit=counter_dec(Limit, RecN),
-                progress=Progress, current_pos=NextF(Tab, Key)};
+    {State#state{current_pos=NextF(Tab, Key), limit=counter_dec(Limit, RecN)}, RecL, RecN};
 %% disk_log
-fold(#state{status=spec_disk_log, limit=0} = State) ->
+prep_fold(#state{status=spec_disk_log, limit=0} = State) ->
     finish_fold(State);
-fold(#state{status=spec_disk_log, current_pos=Cont0} = State) ->
+prep_fold(#state{status=spec_disk_log, current_pos=Cont0, limit=Limit} = State) ->
     case disk_log:chunk(dlog, Cont0) of
         eof ->
-            fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
+            prep_fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
         {error, Reason} ->
-            io:format("disk_log: chunk failed: ~p~n", [Reason]),
-            fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
+            io:format(user, "disk_log: chunk failed: ~p~n", [Reason]),
+            prep_fold(State#state{limit=0}); % trigger end clause by setting Limit to 0
         {Cont, RecL} ->
-            do_fold_disk_log(State#state{current_pos=Cont}, RecL);
+            RecN = length(RecL),
+            {State#state{current_pos=Cont, limit=counter_dec(Limit, RecN)}, RecL, RecN};
         {Cont, RecL, BadBytes} ->
-            io:format("disk_log: skipped ~B bad bytes~n", [BadBytes]),
-            do_fold_disk_log(State#state{current_pos=Cont}, RecL)
+            io:format(user, "disk_log: skipped ~B bad bytes~n", [BadBytes]),
+            RecN = length(RecL),
+            {State#state{current_pos=Cont, limit=counter_dec(Limit, RecN)}, RecL, RecN}
     end.
 
-do_fold_disk_log(#state{status=spec_disk_log, fold_fun=FoldFun, limit=Limit,
-                        progress=Progress0, spec=Spec0} = State, RecL) ->
-    case {ds_progress:get_count(Progress0), RecL} of
+
+%% Perform the fold prepared by prep_fold.
+%% table
+fold(#state{status=spec_table, fold_fun=FoldFun, spec=Spec0} = State, RecL) ->
+    Spec = lists:foldl(FoldFun, Spec0, RecL),
+    State#state{spec=Spec};
+%% disk_log
+fold(#state{status=spec_disk_log} = State, RecL) ->
+    do_fold_disk_log(State, RecL).
+
+do_fold_disk_log(#state{status=spec_disk_log, fold_fun=FoldFun, spec=Spec0,
+                        progress=Progress} = State, RecL) ->
+    case {ds_progress:get_count(Progress), RecL} of
         %% ignore log_header entry at the start
         {0, [{log_header, dcd_log, _, _, _, _}|RestRecL]} ->
             do_fold_disk_log(State, RestRecL);
         _ ->
-            RecN = length(RecL),
-            Progress = ds_progress:update(Progress0, Spec0, RecN),
             Spec = lists:foldl(FoldFun, Spec0, RecL),
-            State#state{spec=Spec, progress=Progress, limit=counter_dec(Limit, RecN)}
+            State#state{spec=Spec}
     end.
 
-finish_fold(#state{status=spec_table, handle=Handle0, progress=Progress,
-                   spec=Spec0} = State) ->
+finish_fold(#state{status=spec_table, handle=Handle0} = State) ->
     Handle = close_dets_table(Handle0),
-    Spec = ds_progress:final(Progress, Spec0),
-    State#state{status=idle, handle=Handle, spec=Spec};
-finish_fold(#state{status=spec_disk_log, progress=Progress, spec=Spec0} = State) ->
+    State#state{status=idle, handle=Handle};
+finish_fold(#state{status=spec_disk_log} = State) ->
     ok = disk_log:close(dlog),
-    Spec = ds_progress:final(Progress, Spec0),
-    State#state{status=idle, spec=Spec}.
+    State#state{status=idle}.
 
 %% If a dets table filename was supplied, we need to open it first.
 open_dets_table(#handle{type=dets, table=undefined, filename=Filename} = Handle)
