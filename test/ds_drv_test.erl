@@ -64,10 +64,8 @@ spec_disk_log_set_test() ->
     test_spec(spec_f(disk_log, LogFile), 100),
     ok = file:delete(LogFile).
 
-spec_f(disk_log, LogFile) ->
-    fun(FieldSpec, Limit) -> ?M:spec_disk_log(LogFile, FieldSpec, Limit) end;
 spec_f(Type, Tid) ->
-    fun(FieldSpec, Limit) -> ?M:spec_table(Type, Tid, FieldSpec, Limit) end.
+    fun(FieldSpec, Limit) -> ?M:spec(Type, Tid, FieldSpec, Limit) end.
 
 test_spec(TestFun, NRecs) ->
     Spec0 = TestFun(#rec_test.key, 1000),

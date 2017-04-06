@@ -2,13 +2,8 @@
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ %% ets, dets, mnesia
-          spec_table/4
-        , spec_table/5
-
-          %% disk_log
-        , spec_disk_log/3
-        , spec_disk_log/4
+-export([ spec/4
+        , spec/5
         ]).
 
 %% for spawn_link:
@@ -24,27 +19,27 @@
 %% Go through a table to spec a field based on a limited number
 %% of rows processed:
 %%
-%%   spec_table(ets, my_table, #my_record.my_field, 1000)
+%%   ds_drv:spec(ets, my_table, #my_record.my_field, 1000)
 %%
 %% Sending 0 as FieldSpec will process the whole record.
 %% Sending eg. 'inf' as Limit disables the limit (traverse whole table).
 %%
 %% Advanced usage exmaples:
 %%   progress indicator and output dump (to retain partial results):
-%%     ds_drv:spec_table(mnesia, payment_rec, #payment_rec.primary_reference,
-%%                       inf, [{progress, 10000}, dump]).
+%%     ds_drv:spec(mnesia, payment_rec, #payment_rec.primary_reference,
+%%                 inf, [{progress, 10000}, dump]).
 %%
 %%   chain field references to spec a sub-subfield on nested records:
-%%     ds_drv:spec_table(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg], inf).
+%%     ds_drv:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg], inf).
 %%
 %%   getter function for arbitrary data selection:
 %%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_drv:spec_table(mnesia, kcase, FieldSpecF, inf).
+%%     ds_drv:spec(mnesia, kcase, FieldSpecF, inf).
 %%
 %%   data attributes:
-%%     ds_drv:spec_table(mnesia, kcase,
-%%                       {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
-%%                       inf, [{progress, 10000}, dump]).
+%%     ds_drv:spec(mnesia, kcase,
+%%                 {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
+%%                 inf, [{progress, 10000}, dump]).
 %%
 %%   NB. using a getter fun is slower than a chained reference (list of field numbers),
 %%   so use the fun only where a truly generic accessor is needed. Also, the fun might
@@ -72,28 +67,23 @@
         }).
 
 
-spec_table(Type, Tab, FieldSpec, Limit, Opts) ->
+spec(Type, Tab, FieldSpec, Limit, Opts) ->
     ds_opts:setopts(Opts),
-    spec_table(Type, Tab, FieldSpec, Limit).
+    spec(Type, Tab, FieldSpec, Limit).
 
+spec(disk_log, Filename, FieldSpec, Limit) ->
+    State = init_fold(Filename, FieldSpec, Limit),
+    procs_init(State);
 %% For dets, we also support passing the filename as the table identifier,
 %% in which case we will open and close it for ourselves:
-spec_table(dets, Filename, FieldSpec, Limit) when is_list(Filename) ->
+spec(dets, Filename, FieldSpec, Limit) when is_list(Filename) ->
     Handle = #handle{type=dets, table=undefined, filename=Filename,
                      accessors=accessors(dets)},
     State = init_fold(Handle, FieldSpec, Limit),
     procs_init(State);
-spec_table(Type, Tab, FieldSpec, Limit) ->
+spec(Type, Tab, FieldSpec, Limit) ->
     Handle = #handle{type=Type, table=Tab, accessors=accessors(Type)},
     State = init_fold(Handle, FieldSpec, Limit),
-    procs_init(State).
-
-spec_disk_log(Filename, FieldSpec, Limit, Opts) ->
-    ds_opts:setopts(Opts),
-    spec_disk_log(Filename, FieldSpec, Limit).
-
-spec_disk_log(Filename, FieldSpec, Limit) ->
-    State = init_fold(Filename, FieldSpec, Limit),
     procs_init(State).
 
 
