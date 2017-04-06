@@ -65,10 +65,10 @@ spec_disk_log_set_test() ->
     ok = file:delete(LogFile).
 
 spec_f(Type, Tid) ->
-    fun(FieldSpec, Limit) -> ?M:spec(Type, Tid, FieldSpec, Limit) end.
+    fun(FieldSpec) -> ?M:spec(Type, Tid, FieldSpec) end.
 
 test_spec(TestFun, NRecs) ->
-    Spec0 = TestFun(#rec_test.key, 1000),
+    Spec0 = TestFun(#rec_test.key),
     {'T', _,
      [{number, _,
        [{integer, _,
@@ -76,7 +76,7 @@ test_spec(TestFun, NRecs) ->
          [{pos_integer, {Stats0, _Ext0}, _}]}]}]}]} = Spec0,
     ?assertEqual(NRecs, ds_stats:get_count(Stats0)),
 
-    Spec1 = TestFun(#rec_test.value1, 1000),
+    Spec1 = TestFun(#rec_test.value1),
     {'T', _,
      [{number, _,
        [{integer, _,
@@ -84,13 +84,13 @@ test_spec(TestFun, NRecs) ->
          [{pos_integer, {Stats1, _Ext1}, _}]}]}]}]} = Spec1,
     ?assertEqual(NRecs, ds_stats:get_count(Stats1)),
 
-    Spec2 = TestFun(#rec_test.value2, 1000),
+    Spec2 = TestFun(#rec_test.value2),
     {'T', _,
      [{number, _,
        [{float, {Stats2, _Ext2}, _}]}]} = Spec2,
     ?assertEqual(NRecs, ds_stats:get_count(Stats2)),
 
-    Spec3 = TestFun(#rec_test.value3, 1000),
+    Spec3 = TestFun(#rec_test.value3),
     {'T', _,
      [{list, _,
        [{nonempty_list, {Stats3, _Ext3},
@@ -101,7 +101,7 @@ test_spec(TestFun, NRecs) ->
                           [{char, _, _}]}]}]}]}]}]}]}]} = Spec3,
     ?assertEqual(NRecs, ds_stats:get_count(Stats3)),
 
-    SpecT = TestFun(0, 1000),
+    SpecT = TestFun(0),
     {'T', _,
      [{tuple, _,
        [{{record, {rec_test, 5}}, {StatsT, _ExtT}, SpecFields}]}]} = SpecT,

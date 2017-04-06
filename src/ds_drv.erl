@@ -2,8 +2,8 @@
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ spec/4
-        , spec/5
+-export([ spec/3
+        , spec/4
         ]).
 
 %% for spawn_link:
@@ -17,29 +17,29 @@
 -endif.
 
 %% Go through a table to spec a field based on a limited number
-%% of rows processed:
+%% of rows processed (option 'limit' defaults to 1000):
 %%
-%%   ds_drv:spec(ets, my_table, #my_record.my_field, 1000)
+%%   ds_drv:spec(ets, my_table, #my_record.my_field)
 %%
 %% Sending 0 as FieldSpec will process the whole record.
-%% Sending eg. 'inf' as Limit disables the limit (traverse whole table).
+%% Setting 'limit' to 'infinity' disables the limit (traverse whole table).
 %%
 %% Advanced usage exmaples:
-%%   progress indicator and output dump (to retain partial results):
+%%   progress indicator and output dump:
 %%     ds_drv:spec(mnesia, payment_rec, #payment_rec.primary_reference,
-%%                 inf, [{progress, 10000}, dump]).
+%%                 [{limit, infinity}, progress, dump]).
 %%
 %%   chain field references to spec a sub-subfield on nested records:
-%%     ds_drv:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg], inf).
+%%     ds_drv:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg]).
 %%
 %%   getter function for arbitrary data selection:
 %%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_drv:spec(mnesia, kcase, FieldSpecF, inf).
+%%     ds_drv:spec(mnesia, kcase, FieldSpecF).
 %%
 %%   data attributes:
 %%     ds_drv:spec(mnesia, kcase,
 %%                 {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
-%%                 inf, [{progress, 10000}, dump]).
+%%                 [{limit, infinity}, {progress, 0.5}, dump]).
 %%
 %%   NB. using a getter fun is slower than a chained reference (list of field numbers),
 %%   so use the fun only where a truly generic accessor is needed. Also, the fun might
@@ -67,23 +67,23 @@
         }).
 
 
-spec(Type, Tab, FieldSpec, Limit, Opts) ->
+spec(Type, Tab, FieldSpec, Opts) ->
     ds_opts:setopts(Opts),
-    spec(Type, Tab, FieldSpec, Limit).
+    spec(Type, Tab, FieldSpec).
 
-spec(disk_log, Filename, FieldSpec, Limit) ->
-    State = init_fold(Filename, FieldSpec, Limit),
+spec(disk_log, Filename, FieldSpec) ->
+    State = init_fold(Filename, FieldSpec),
     procs_init(State);
 %% For dets, we also support passing the filename as the table identifier,
 %% in which case we will open and close it for ourselves:
-spec(dets, Filename, FieldSpec, Limit) when is_list(Filename) ->
+spec(dets, Filename, FieldSpec) when is_list(Filename) ->
     Handle = #handle{type=dets, table=undefined, filename=Filename,
                      accessors=accessors(dets)},
-    State = init_fold(Handle, FieldSpec, Limit),
+    State = init_fold(Handle, FieldSpec),
     procs_init(State);
-spec(Type, Tab, FieldSpec, Limit) ->
+spec(Type, Tab, FieldSpec) ->
     Handle = #handle{type=Type, table=Tab, accessors=accessors(Type)},
-    State = init_fold(Handle, FieldSpec, Limit),
+    State = init_fold(Handle, FieldSpec),
     procs_init(State).
 
 
@@ -174,17 +174,17 @@ procs_slave_loop(#state{master_pid = MasterPid, next_pid = NextPid,
 
 
 %% Initialize a fold through a table
-init_fold(#handle{} = Handle0, FieldSpec0, Limit) ->
+init_fold(#handle{} = Handle0, FieldSpec0) ->
     ds_records:init(),
     Handle = open_dets_table(Handle0),
     #handle{table=Tab, accessors={FirstF, _ReadF, _NextF}} = Handle,
     FieldSpec = normalize_spec(FieldSpec0),
     FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
-    #state{status=spec_table, handle=Handle, field_spec=FieldSpec,
-           fold_fun=FoldFun, limit=Limit, current_pos=FirstF(Tab),
-           spec=ds:new()};
+    #state{status=spec_table,
+           handle=Handle, field_spec=FieldSpec, fold_fun=FoldFun,
+           spec=ds:new(), limit=ds_opts:getopt(limit), current_pos=FirstF(Tab)};
 %% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
-init_fold(Filename, FieldSpec0, Limit) ->
+init_fold(Filename, FieldSpec0) ->
     ds_records:init(),
     {ok, dlog} = disk_log:open([ {name, dlog}
                                , {file, Filename}
@@ -193,8 +193,9 @@ init_fold(Filename, FieldSpec0, Limit) ->
                                ]),
     FieldSpec = normalize_spec(FieldSpec0),
     FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
-    #state{status=spec_disk_log, handle=Filename, field_spec=FieldSpec,
-           fold_fun=FoldFun, limit=Limit, current_pos=start, spec=ds:new()}.
+    #state{status=spec_disk_log,
+           handle=Filename, field_spec=FieldSpec, fold_fun=FoldFun,
+           spec=ds:new(), limit=ds_opts:getopt(limit), current_pos=start}.
 
 %% Prepare a fold step based on current state. Result is either
 %% - {#state{}, done} in case we are done;

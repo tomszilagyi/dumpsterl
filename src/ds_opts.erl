@@ -38,15 +38,18 @@ filtermap(Fun, List) ->
 %%   rec_attrs: 'true' | 'false' | 'force'
 %%     collect record attributes and enrich the spec with those
 %%       referenced in the data.
-%%        true: collect data once at the beginning of first run
-%%       false: turn off completely
-%%       force: force (re)collection even if data has been collected;
+%%     - true:  collect data once at the beginning of first run
+%%     - false: turn off completely
+%%     - force: force (re)collection even if data has been collected;
 %%              useful if code has been changed in the system
 %%              NB. just including rec_attrs (with no value) in the
 %%              options list is equivalent to {rec_attrs, force}.
 %%
 %%   samples: 'false' | N (positive integer) | 'infinity'
-%%       maximum number of samples to collect (per node)
+%%       Maximum number of samples to collect.
+%%       NB. using 'infinity' is definitely not recommended, as the spec
+%%       size will grow without bounds unless the number of processed
+%%       records is limited to a small number!
 %%
 %% other options:
 %%
@@ -63,6 +66,11 @@ filtermap(Fun, List) ->
 %%         whole spec is periodically dumped. Naturally, the entire result
 %%         is collected and dumped on completion (or ds-shell interruption).
 %%
+%%   limit: 'infinity' | pos_integer()
+%%     Limit the number of records to process. In case reads are done in
+%%     chunks of several records (such as with disk_logs), the limit might
+%%     be slightly exceeded. Defaults to 1000, which is a safely low value.
+%%
 %%   mnesia_dir: dirname()
 %%     The name of the mnesia directory where table data files are stored.
 %%     This option is useful if the Erlang node running dumpsterl does not
@@ -74,14 +82,15 @@ filtermap(Fun, List) ->
 %%     Defaults to the number of logical processors as reported by ERTS.
 %%
 %%   progress: number() | false
-%%     output progress information and (if dump is enabled) write dumps
-%%       false: no output
-%%       T: update progress info every T seconds
+%%     Output progress information and (if dump is enabled) write interim
+%%       dumps.
+%%     - false: no output
+%%     - T: update progress info every T seconds
 %%          (achieved update frequency is limited by read granularity)
 %%
 %%   term: atom() | string()
 %%     terminal setting useful to override the $TERM environment variable
-%%     (e.g. set it to 'dumb' to forcibly disable progress line rewrites)
+%%     (set it to 'dumb' to forcibly disable progress line rewrites)
 
 opts() ->
     %% The following table specifies the options interpreted.
@@ -95,6 +104,7 @@ opts() ->
     %% name          undefined     novalue
     [ {dump,         false,        "ds.bin"}
     , {hll_b,        8,            8}
+    , {limit,        1000,         1000}
     , {mnesia_dir,   undefined,    undefined}
     , {procs,        cores(),      cores()}
     , {progress,     false,        1}
@@ -146,6 +156,9 @@ normalize_opt(dump, S) ->
 normalize_opt(hll_b, false) -> true;
 normalize_opt(hll_b, I) ->
     true = is_integer(I) andalso I >= 4 andalso I =< 16, true;
+normalize_opt(limit, infinity) -> true;
+normalize_opt(limit, N) ->
+    true = is_integer(N) andalso N > 0, true;
 normalize_opt(mnesia_dir, D) ->
     true = filelib:is_dir(D), true;
 normalize_opt(procs, N) ->
