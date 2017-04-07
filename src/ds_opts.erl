@@ -3,8 +3,11 @@
 -module(ds_opts).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ getopt/1
+-export([ keys/0
+        , getopt/1
+        , getopt/2
         , setopts/1
+        , normalize_opts/1
         ]).
 
 -ifdef(TEST).
@@ -110,8 +113,10 @@ opts() ->
     , {progress,     false,        1}
     , {rec_attrs,    true,         force}
     , {samples,      16,           16}
-    , {term,         undefined,    "vt100"}
+    , {term,         term(),       "vt100"}
     ].
+
+keys() -> [Opt || {Opt, _Undefined, _Novalue} <- opts()].
 
 %% NB. using the process dict is ugly; passing Opts around is uglier.
 -define(PROCDICT_KEY, dumpsterl_opts).
@@ -189,7 +194,23 @@ getopt(Opt, Opts) ->
         Value     -> Value
     end.
 
+
+%% Functions for dynamic defaults
+
 cores() -> erlang:system_info(logical_processors).
+
+%% Try to find out if we have a usable terminal or not.
+%% All terminals tested to be usable are categorized as 'vt100',
+%% since that is the compatibility baseline we rely on.
+%% Otherwise we treat the terminal as 'dumb'.
+term() ->
+    case os:getenv("TERM") of
+        "rxvt"        -> "vt100";
+        "screen" ++ _ -> "vt100";
+        "vt" ++ _     -> "vt100";
+        "xterm" ++ _  -> "vt100";
+        _             -> "dumb"
+    end.
 
 %% Tests
 -ifdef(TEST).

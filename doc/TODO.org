@@ -104,6 +104,7 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
    - setting and viewing options before a run
    - running, pausing, resuming
    - loading a dumped spec and resuming its run
+ - show last dump size as part of progress status line
 *** TODO save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be

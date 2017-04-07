@@ -117,12 +117,13 @@ procs_slave(State, MasterPid, N) ->
 procs_master_loop(#state{status = idle, n_procs = 1, spec = Spec0, progress = Progress}) ->
     Spec = ds_progress:final(Progress, Spec0),
     Spec;
-procs_master_loop(#state{master_pid =_MasterPid, next_pid = NextPid,
-                         spec=Spec0, progress = Progress0, n_procs = NProcs} = State0) ->
+procs_master_loop(#state{next_pid = NextPid, spec=Spec0, limit = PrevLimit,
+                         progress = Progress0, n_procs = NProcs} = State0) ->
     receive
         {proc, Pos0, Limit0, AccRecN} ->
             Progress = ds_progress:update(Progress0, Spec0, AccRecN),
-            State1 = State0#state{current_pos=Pos0, limit=Limit0, progress=Progress},
+            State1 = State0#state{current_pos = Pos0, limit = min(PrevLimit, Limit0),
+                                  progress = Progress},
             case prep_fold(State1) of
                 {State2, done} ->
                     ?debug("master: prep_fold -> done", []),
@@ -144,6 +145,8 @@ procs_master_loop(#state{master_pid =_MasterPid, next_pid = NextPid,
             ?debug("master: result from ~p, n_procs: ~p", [_Pid, NProcs]),
             Spec = ds:join(Spec0, SlaveSpec),
             procs_master_loop(State0#state{spec=Spec, n_procs = NProcs-1});
+        finish ->
+            procs_master_loop(State0#state{limit = 0}); % trigger soft finish
         _Msg ->
             ?debug("master: got msg: ~p", [_Msg]),
             procs_master_loop(State0)
