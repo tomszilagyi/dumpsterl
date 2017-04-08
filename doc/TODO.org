@@ -98,13 +98,14 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
 
   The last option above has been implemented.
 
-*** TODO probe command shell to control the probe driver
+*** DONE probe command shell to control the probe driver
  - print progress updates using vt100 rewrite-last-line technique
  - line oriented command syntax after ds> prompt to support:
    - setting and viewing options before a run
    - run, stop, refine settings, run, ...
- - help listing/browsing available tables and show attributes
  - show last dump size as part of progress status line
+*** TODO probe command shell: additional features/ideas
+ - help listing/browsing available tables and show attributes
 *** TODO save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be

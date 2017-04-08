@@ -23,6 +23,7 @@
                   , end_ts           % latest (eventually, last) timestamp
                   , next_tick_count  % next count when progress will be printed
                   , last_dump_ts     % last timestamp when dump was written
+                  , last_dump_size   % last written dump size in bytes
                   }).
 
 init() -> init(ds_opts:getopt(progress)).
@@ -42,7 +43,7 @@ update(#progress{count=Count, next_tick_count=NextTickCount}=P,_Acc, Incr)
   when Count < NextTickCount ->
     P#progress{count = Count + Incr};
 update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
-                 count=Count0}=P,
+                 last_dump_size=LastDumpSize0, count=Count0}=P,
        Acc, Incr) ->
 
     Count = Count0 + Incr,
@@ -51,25 +52,26 @@ update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
     %% estimate the count at the next progress update
     NextTickCount = Count * (1 + Interval / DeltaT),
 
-    print_status(Count, StartTS, EndTS),
-
     %% do not dump more frequently than once every ten seconds
     DeltaSinceLastDump = time_diff(LastDumpTS0, EndTS),
-    LastDumpTS = if DeltaSinceLastDump > ?DUMP_INTERVAL_MIN ->
-                         dump_acc(Acc),
-                         EndTS;
-                    true -> LastDumpTS0
-                 end,
+    {LastDumpSize, LastDumpTS} =
+        if DeltaSinceLastDump > ?DUMP_INTERVAL_MIN ->
+                {dump_acc(Acc), EndTS};
+           true ->
+                {LastDumpSize0, LastDumpTS0}
+        end,
+
+    print_status(Count, StartTS, EndTS, LastDumpSize),
 
     P#progress{count=Count, end_ts=EndTS, last_dump_ts=LastDumpTS,
-               next_tick_count=NextTickCount}.
+               last_dump_size=LastDumpSize, next_tick_count=NextTickCount}.
 
 final(#progress{interval=false}, Acc) ->
     dump_acc(Acc, true),
     Acc;
-final(#progress{count=Count, start_ts=StartTS}, Acc) ->
+final(#progress{count=Count, start_ts=StartTS, last_dump_size=LastDumpSize}, Acc) ->
     EndTS = os:timestamp(),
-    print_status(Count, StartTS, EndTS),
+    print_status(Count, StartTS, EndTS, LastDumpSize),
     dump_acc(Acc, true),
     Acc.
 
@@ -78,23 +80,31 @@ dump_acc(Acc) -> dump_acc(Acc, false).
 
 dump_acc(Acc, Verbose) ->
     case ds_opts:getopt(dump) of
-        false    -> ok;
+        false    -> undefined;
         Filename ->
-            ok = file:write_file(Filename, erlang:term_to_binary(Acc)),
+            Binary = erlang:term_to_binary(Acc),
+            DumpSize = size(Binary),
+            ok = file:write_file(Filename, Binary),
             if Verbose ->
-                    io:format("spec dump written to ~s~n", [Filename]);
+                    io:format("spec dump: ~s bytes written to ~s~n",
+                              [integer_to_sigfig(DumpSize), Filename]);
                true -> ok
-            end
+            end,
+            DumpSize
     end.
 
-print_status(Count, StartTS, EndTS) ->
+print_status(Count, StartTS, EndTS, LastDumpSize) ->
     DeltaT = time_diff(StartTS, EndTS),
     CountStr = integer_to_sigfig(Count),
     TimeStr = time_str(DeltaT),
     SpeedStr = speed_str(DeltaT, Count),
-    Status = io_lib:format("processed ~s in ~s (~s records/sec)",
-                           [CountStr, TimeStr, SpeedStr]),
+    LastDumpStr = dump_size_str(LastDumpSize),
+    Status = io_lib:format("processed ~s in ~s (~s records/sec)~s",
+                           [CountStr, TimeStr, SpeedStr, LastDumpStr]),
     ds_shell:set_statusline(Status).
+
+dump_size_str(undefined) -> "";
+dump_size_str(N) -> lists:concat([", dumped ", integer_to_sigfig(N), " bytes"]).
 
 %% return an iolist of the integer printed with significant figures separated by commas
 integer_to_sigfig(N) ->
