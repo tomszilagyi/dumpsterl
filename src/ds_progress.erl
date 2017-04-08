@@ -28,7 +28,7 @@
 
 init() -> init(ds_opts:getopt(progress)).
 
-init(false) -> #progress{};
+init(false) -> #progress{start_ts = os:timestamp()};
 init(Interval) ->
     io:fwrite("\n"),
     StartTS = os:timestamp(),
@@ -38,12 +38,13 @@ init(Interval) ->
 get_count(#progress{count=Count}) -> Count.
 
 %% output progress information if configured to do so
-update(#progress{interval=false}=P, _Acc, _Incr) -> P;
+update(#progress{interval=false, count=Count}=P, _Acc, Incr) ->
+    P#progress{count = Count + Incr};
 update(#progress{count=Count, next_tick_count=NextTickCount}=P,_Acc, Incr)
   when Count < NextTickCount ->
     P#progress{count = Count + Incr};
 update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
-                 last_dump_size=LastDumpSize0, count=Count0}=P,
+                 last_dump_size=LastDumpSize0, count=Count0}=P0,
        Acc, Incr) ->
 
     Count = Count0 + Incr,
@@ -51,37 +52,36 @@ update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
     DeltaT = max(time_diff(StartTS, EndTS), 0.000001),
     %% estimate the count at the next progress update
     NextTickCount = Count * (1 + Interval / DeltaT),
+    P = P0#progress{count=Count, end_ts=EndTS, next_tick_count=NextTickCount},
 
     %% do not dump more frequently than once every ten seconds
     DeltaSinceLastDump = time_diff(LastDumpTS0, EndTS),
     {LastDumpSize, LastDumpTS} =
         if DeltaSinceLastDump > ?DUMP_INTERVAL_MIN ->
-                {dump_acc(Acc), EndTS};
+                {dump_acc(P, Acc), EndTS};
            true ->
                 {LastDumpSize0, LastDumpTS0}
         end,
 
     print_status(Count, StartTS, EndTS, LastDumpSize),
+    P#progress{last_dump_ts=LastDumpTS, last_dump_size=LastDumpSize}.
 
-    P#progress{count=Count, end_ts=EndTS, last_dump_ts=LastDumpTS,
-               last_dump_size=LastDumpSize, next_tick_count=NextTickCount}.
-
-final(#progress{interval=false}, Acc) ->
-    dump_acc(Acc, true),
-    Acc;
-final(#progress{count=Count, start_ts=StartTS, last_dump_size=LastDumpSize}, Acc) ->
+final(#progress{count=Count, start_ts=StartTS, last_dump_size=LastDumpSize}=P,
+      Acc) ->
     EndTS = os:timestamp(),
     print_status(Count, StartTS, EndTS, LastDumpSize),
-    dump_acc(Acc, true),
+    dump_acc(P#progress{end_ts=EndTS}, Acc, true),
     Acc.
 
-%% dump the accumulated spec if dumpsterl is configured to do dumps
-dump_acc(Acc) -> dump_acc(Acc, false).
+%% Dump the accumulated spec if dumpsterl is configured to do dumps.
+%% Return the size of the dump in bytes, or undefined.
+dump_acc(Progress, Acc) -> dump_acc(Progress, Acc, false).
 
-dump_acc(Acc, Verbose) ->
+dump_acc(Progress, Acc0, Verbose) ->
     case ds_opts:getopt(dump) of
         false    -> undefined;
         Filename ->
+            Acc = add_metadata(Progress, Acc0),
             Binary = erlang:term_to_binary(Acc),
             DumpSize = size(Binary),
             ok = file:write_file(Filename, Binary),
@@ -92,6 +92,17 @@ dump_acc(Acc, Verbose) ->
             end,
             DumpSize
     end.
+
+%% Save metadata about the probe run into the toplevel node's extra data.
+add_metadata(#progress{count = Count, start_ts = StartTS, end_ts = EndTS},
+             {Class, {Stats, Ext}, Children}) ->
+    Meta = [ {processed, Count}
+           , {node, node()}
+           , {options, ds_opts:getopts_all()}
+           , {start_ts, StartTS}
+           , {end_ts, EndTS}
+           ],
+    {Class, {Stats, [{meta, Meta} | Ext]}, Children}.
 
 print_status(Count, StartTS, EndTS, LastDumpSize) ->
     DeltaT = time_diff(StartTS, EndTS),

@@ -106,14 +106,12 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
  - show last dump size as part of progress status line
 *** TODO probe command shell: additional features/ideas
  - help listing/browsing available tables and show attributes
-*** TODO save probe metadata in spec dump
+*** DONE save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be
     more than the count in the Stats of 'T' in case of skipped items.
   - options used for the run
   - wall clock of start and end
-  - iterator key (in case we want to continue running the probe from
-    this point)
 - the data can be put into Ext of the spec's root node.
 ** Conversion: between probe and gui
 *** DONE compact
@@ -123,7 +121,7 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
 *** DONE join_up
  account each data term only in leaf node, and when assembling the
  tree, derive parent nodes based on the union of children.
-*** TODO get the metadata from root node's Ext
+*** DONE get the metadata from root node's Ext
 ** Type system
 *** DONE The fundamental semantics of the type hierarchy
 

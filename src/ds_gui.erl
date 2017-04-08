@@ -377,8 +377,19 @@ fold_widths(Ws, Acc) ->
 
 load_zipper(Filename) ->
     {ok, Bin} = file:read_file(Filename),
-    Tree = binary_to_term(Bin),
+    {Tree, Meta} = decode_binary_spec(Bin),
+    io:format(user, "Spec metadata: ~p~n", [Meta]),
     ds_zipper:from_tree(ds:join_up(ds:compact(Tree))).
+
+decode_binary_spec(Bin) ->
+    {Class, {Stats, MetaExt}, Children} = Tree0 = erlang:binary_to_term(Bin),
+    case MetaExt of
+        [{meta, Meta} | Ext] ->
+            Tree = {Class, {Stats, Ext}, Children},
+            {Tree, Meta};
+        _ ->
+            {Tree0, []}
+    end.
 
 -else.
 %% In case the GUI is disabled:

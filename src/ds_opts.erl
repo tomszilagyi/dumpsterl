@@ -6,6 +6,7 @@
 -export([ keys/0
         , getopt/1
         , getopt/2
+        , getopts_all/0
         , setopts/1
         , normalize_opts/1
         ]).
@@ -129,6 +130,8 @@ getopts() ->
         Opts      -> Opts
     end.
 
+%% All options, either explicitly set or as default:
+getopts_all() -> [{K, getopt(K)} || K <- keys()].
 
 normalize_opts(Opts) ->
     ?filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
