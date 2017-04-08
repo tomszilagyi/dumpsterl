@@ -1,11 +1,24 @@
 -module(ds_records).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([init/0, lookup/1]).
+-export([ init/0
+        , reinit/0
+        , get_attrs/0
+        , put_attrs/1
+        , lookup/1]).
 
 -define(STORAGE_KEY, dumpsterl_rec_attrs).
 
 init() -> maybe_init(ds_opts:getopt(rec_attrs)).
+
+%% forced reinitialization used by ds_shell on change of mnesia_dir
+reinit() ->
+    erase(?STORAGE_KEY),
+    init().
+
+get_attrs() -> get(?STORAGE_KEY).
+
+put_attrs(Attrs) -> put(?STORAGE_KEY, Attrs).
 
 maybe_init(false) ->
     erase(?STORAGE_KEY),

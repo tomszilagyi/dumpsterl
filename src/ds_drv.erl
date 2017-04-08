@@ -2,12 +2,17 @@
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
+%% API for manual use
 -export([ spec/3
         , spec/4
+        , start/3
+        , start/4
         ]).
 
-%% for spawn_link:
--export([ procs_slave/3 ]).
+%% call by ds_shell; for spawn_monitor and spawn_link:
+-export([ start/6
+        , init/6
+        , procs_slave/3 ]).
 
 %%-define(DEBUG, true).
 -include("debug.hrl").
@@ -67,6 +72,21 @@
         }).
 
 
+start(Type, Tab, FieldSpec) ->
+    start(Type, Tab, FieldSpec, []).
+
+start(Type, Tab, FieldSpec, Opts) ->
+    start(Type, Tab, FieldSpec, Opts, undefined, undefined).
+
+start(Type, Tab, FieldSpec, Opts, RecAttrs, StatusLinePid) ->
+    spawn_monitor(?MODULE, init, [Type, Tab, FieldSpec, Opts, RecAttrs, StatusLinePid]).
+
+init(Type, Tab, FieldSpec, Opts, RecAttrs, StatusLinePid) ->
+    ds_opts:setopts(Opts),
+    ds_records:put_attrs(RecAttrs),
+    ds_shell:set_statusline_pid(StatusLinePid),
+    spec(Type, Tab, FieldSpec).
+
 spec(Type, Tab, FieldSpec, Opts) ->
     ds_opts:setopts(Opts),
     spec(Type, Tab, FieldSpec).
@@ -116,6 +136,7 @@ procs_slave(State, MasterPid, N) ->
 
 procs_master_loop(#state{status = idle, n_procs = 1, spec = Spec0, progress = Progress}) ->
     Spec = ds_progress:final(Progress, Spec0),
+    io:format("probe finished.\n"),
     Spec;
 procs_master_loop(#state{next_pid = NextPid, spec=Spec0, limit = PrevLimit,
                          progress = Progress0, n_procs = NProcs} = State0) ->

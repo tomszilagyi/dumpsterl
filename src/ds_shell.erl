@@ -1,9 +1,15 @@
 -module(ds_shell).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
+%% API functions
 -export([ start/0
         , set_statusline/1
-        , repl/1
+        , set_statusline_pid/1
+        ]).
+
+%% exported for external calls & spawn_*
+-export([ repl/1
+        , statusline_srv/0
         ]).
 
 -define(STATUSLINE_KEY, ds_shell_status_line).
@@ -12,13 +18,14 @@
 -define(PARAMS_STR, string:join(?PARAMS, " ")).
 -define(TYPES, ["dets", "disk_log", "ets", "mnesia"]).
 -define(TYPES_STR, string:join(?TYPES, " ")).
+-define(DEFAULT_OPTIONS, [dump, {progress, 0.5}]).
 
 -record(state,
         { type       = disk_log % ets
         , table      = "kred_data/kcase.DCD"
         , field      = 0
         , attrs      = [] %[{ts, 3}, {key, 2}]
-        , options    = [dump, {progress, 0.5}]
+        , options    = ?DEFAULT_OPTIONS
         , probe_pid
         , probe_monitor
         }).
@@ -28,25 +35,39 @@ start() ->
               "\nDumpsterl interactive probe shell.\n"
               "Type 'quit' + <enter> to get back to the Erlang shell;\n"
               "     'help' + <enter> to get help.\n\n", []),
+    ds_opts:setopts(?DEFAULT_OPTIONS),
+    ds_records:init(),
+    set_statusline_pid(spawn_link(?MODULE, statusline_srv, [])),
     repl(#state{}).
 
 repl(State0) ->
-    io:fwrite([get_statusline(), $\n]),
     Line = io:get_line(?PROMPT),
-    %% reprint prompt one above of where it was
-    io:fwrite([line_up_and_erase(), line_up_and_erase(), ?PROMPT, Line]),
-    State1 = wait_for_probe(0, State0),
+    State = wait_for_probe(0, State0),
+    print_statusline(Line, State),
     case Line of
         "quit" ++ _ ->
-            %% TODO if probe is running, stop it first!
+            stop_probe(State),
             ok; %% exit
         "\n" ->
-            ?MODULE:repl(State1);
+            ?MODULE:repl(State);
         _ ->
-            State = eval_cmd(Line, State1),
+            NewState = eval_cmd(Line, State),
             io:nl(),
-            ?MODULE:repl(State)
+            ?MODULE:repl(NewState)
     end.
+
+print_statusline(_Line, #state{probe_pid = undefined}) -> ok;
+print_statusline(Line, _State) ->
+    reprint_prompt_line(Line, ds_opts:getopt(term)),
+    case get_statusline() of
+        "" -> ok;
+        StatusLine -> io:fwrite([StatusLine, $\n])
+    end.
+
+reprint_prompt_line(_Line, "dumb") -> ok;
+reprint_prompt_line(Line, "vt100") ->
+    %% reprint prompt one above of where it was
+    io:fwrite([line_up_and_erase(), line_up_and_erase(), ?PROMPT, Line]).
 
 eval_cmd("set " ++ ArgsStr, State) ->
     case string:tokens(ArgsStr, " \r\n\t") of
@@ -69,18 +90,14 @@ eval_cmd("run\n",
          #state{type = Type, table = Table, field = Field, attrs = Attrs,
                 options = Options} = State) ->
     FieldSpec = {Field, Attrs},
-    ProbePid = spawn_link(ds_drv, spec, [Type, Table, FieldSpec, Options]),
-    ProbeMon = monitor(process, ProbePid),
+    RecAttrs = ds_records:get_attrs(),
+    {ProbePid, ProbeMon} = ds_drv:start(Type, Table, FieldSpec, Options,
+                                        RecAttrs, get_statusline_pid()),
     State#state{probe_pid = ProbePid, probe_monitor = ProbeMon};
-eval_cmd("stop\n", #state{probe_pid = undefined} = State) ->
-    io:format("probe is not running!\n"),
-    State;
-eval_cmd("stop\n", #state{probe_pid = ProbePid} = State) ->
-    ProbePid ! finish,
-    wait_for_probe(infinity, State);
+eval_cmd("stop\n", State) -> stop_probe(State);
 eval_cmd("help\n", State) -> help(State);
 eval_cmd("help " ++ ParamStr, State) -> help(ParamStr, State);
-eval_cmd(Line, State) -> invalid(Line, State).
+eval_cmd(Line, State) -> invalid_input(Line, State).
 
 set_param("type"=Param, ValueStr, State) ->
     case lists:member(ValueStr, ?TYPES) of
@@ -126,6 +143,11 @@ set_opt(OptStr, Value, #state{options=Options0} = State) ->
                            _     -> [{Opt, Value} | Options1]
                        end,
             Options = ds_opts:normalize_opts(Options2),
+            ds_opts:setopts(Options),
+            case Opt of
+                mnesia_dir -> ds_records:reinit();
+                _ -> ok
+            end,
             show_param(OptStr, State#state{options = Options});
         false ->
             invalid_param(OptStr),
@@ -161,16 +183,16 @@ show_opt(Key, Options) ->
 
 help(State) ->
     io:format("Commands:\n"
-              "  help [<keyword>]\n"
-              "  show [<param>|<option> ...]\n"
+              "  help [<command|param|option>]\n"
+              "  show [<param|option> ...]\n"
               "      params: ~s\n"
-              "  set <param> <value>\n"
-              "      params as above, plus individual options\n"
-              "      (type 'help options' for valid options)\n"
+              "      options: ~s\n"
+              "  set <param|option> <value>\n"
+              "      see above for params and options\n"
               "  run\n"
               "  stop\n"
               "  quit\n",
-              [?PARAMS_STR]),
+              [?PARAMS_STR, opts_str()]),
     State.
 
 help("help"++_, State) ->
@@ -179,25 +201,26 @@ help("help"++_, State) ->
               "Type 'show' to get a list of valid parameters and options.\n"),
     State;
 %% TODO help text for all commands, params and options
-help(Str, State) -> invalid(Str, State).
+help(Str, State) -> invalid_input(Str, State).
 
 opt_from_string(OptStr) ->
     try erlang:list_to_existing_atom(OptStr)
     catch error:badarg -> invalid_option
     end.
 
-invalid(Str, State) ->
+opts_str() ->
+    string:join([atom_to_list(Key) || Key <- ds_opts:keys()], " ").
+
+invalid_input(Str, State) ->
     io:format("Unrecognized input: ~s" % Str ends with \n
               "Type 'help' to get a list of commands.\n", [Str]),
     State.
 
 invalid_param(Param) ->
-    OptKeys = ds_opts:keys(),
-    OptsStr = string:join([atom_to_list(Key) || Key <- OptKeys], " "),
     io:format("~10s: invalid parameter or option~n"
               "~10s: ~s~n"
               "~10s: ~s~n",
-              [Param, "params", ?PARAMS_STR, "options", OptsStr]).
+              [Param, "params", ?PARAMS_STR, "options", opts_str()]).
 
 parse_term(Str) ->
     case erl_scan:string(Str ++ ".") of
@@ -213,28 +236,60 @@ parse_term(Str) ->
 
 error_string({_Loc,_Mod, Error}) -> Error.
 
+stop_probe(#state{probe_pid = undefined} = State) ->
+    io:format("probe is not running\n"),
+    State;
+stop_probe(#state{probe_pid = Pid} = State) ->
+    Pid ! finish,
+    wait_for_probe(infinity, State).
+
 wait_for_probe(_Timeout, #state{probe_pid = undefined} = State) -> State;
 wait_for_probe(Timeout, #state{probe_pid = Pid, probe_monitor = Monitor} = State) ->
     receive {'DOWN', Monitor, process, Pid, _Reason} ->
-            io:format("probe stopped.\n"),
             State#state{probe_pid = undefined, probe_monitor = undefined}
     after Timeout ->
             State
     end.
 
+get_statusline_pid() -> get(statusline_pid).
+
 get_statusline() ->
-    case get(?STATUSLINE_KEY) of
-        undefined  -> "";
-        StatusLine -> StatusLine
+    case get_statusline_pid() of
+        undefined -> "";
+        StatusLinePid -> get_statusline(StatusLinePid)
     end.
 
-%% FIXME this is called from ds_drv, which runs in another process!
+get_statusline(StatusLinePid) ->
+    StatusLinePid ! {self(), get_statusline},
+    receive
+        {statusline, StatusLine} -> StatusLine
+    end.
+
+%% Mini-server to keep track of last status line received from probe
+statusline_srv() ->
+    statusline_loop("").
+
+statusline_loop(StatusLine0) ->
+    receive
+        {statusline, StatusLine} ->
+            statusline_loop(StatusLine);
+        {From, get_statusline} ->
+            From ! {statusline, StatusLine0},
+            statusline_loop(StatusLine0)
+    end.
+
+set_statusline_pid(StatusLinePid) ->
+    put(statusline_pid, StatusLinePid).
+
 set_statusline(IoData) ->
-    put(?STATUSLINE_KEY, IoData),
+    case get_statusline_pid() of
+        undefined -> ok;
+        Pid  -> Pid ! {statusline, IoData}
+    end,
     io:fwrite([line_up_and_erase(), IoData, $\n]).
 
-%% This is the only terminal-specific bit.
 line_up_and_erase() -> line_up_and_erase(ds_opts:getopt(term)).
 
+%% This is the only terminal-specific bit.
 line_up_and_erase("vt100") -> "\e[A\e[2K";
 line_up_and_erase("dumb")  -> "".
