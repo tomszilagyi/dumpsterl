@@ -76,11 +76,18 @@ The table parameter could take the filename.
 Is it possible to have a keypos other than 2? If yes, it needs to be a
 (perhaps optional) parameter to the spec function.
 
-*** TODO support 'result' flag
+*** DONE support 'result' flag
   Default false. When set to true, return the result of the spec to
   the caller (as is now). The goal is to reduce clutter in the
   terminal, as most users will dump the spec to file for opening it in
   the gui.
+
+  NB. this has been dropped. The probe api has been changed so that
+  it is possible to run the spec() function directly, which returns
+  the spec tree. It is also possible to run start() manually, which
+  - yields a pid and monitor ref, making it possible to manually stop
+    the probe before the limit is reached;
+  - does not return the spec as a return value, only dumps (if enabled).
 *** TODO support 'keep' flag
 - sampler: provide attribute 'keep' to signify that a particular
   piece of data satisfies certain criteria to be 'interesting'.
@@ -105,7 +112,9 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
    - run, stop, refine settings, run, ...
  - show last dump size as part of progress status line
 *** TODO probe command shell: additional features/ideas
- - help listing/browsing available tables and show attributes
+ - help listing/browsing available tables
+ - show attributes to help choosing the right spec
+ - support syntax to enter complex field specs
 *** DONE save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be
@@ -139,22 +148,17 @@ for each unique key ever seen in any map instance in that position.
 The code could be refactored a bit to reflect the above simple
 underlying concept.
 
-*** TODO Complete coverage of Erlang types
-  - commonly used complex types e.g. proplist
-  - allow dynamic subtypes to have further subtypes
-    ie. allow types() to contain something like:
-    { {tuple, '_'}, ... } %% subtypes for any (concrete) size tuple
-
-**** TODO maps
+*** DONE Complete coverage of Erlang types
+**** DONE maps
 
 Maps are a generic type. Attributes of a map are the transitive union
 set of keys seen in any instance.
 
 Representing a map node in the spec:
 - Children contain specs for each attribute;
-- Ext contains the attribute spec, that is:
-  [{1, Key1}, {2, Key2}, ...]
-  names in the same order as Children.
+- Ext contains the list of attributes, that is:
+  [Key1, Key2, ...]
+  corresponding to the spec list in Children.
 
 We don't want the map size to be part of its spec, because map
 instances occurring in the same position could easily contain optional
@@ -163,7 +167,7 @@ the spec to a minimum.  Differing counts of key occurrences will be
 reflected by the counters of each child spec, reflected by the Count
 column of the type parameter listing in the gui.
 
-*** TODO Type labeling / reductions
+*** TODO Type labeling / shorthand descriptions / reductions
 
 The raw end result of the probing stage will reflect the core Erlang
 types (enriched with record information) found in the data.
@@ -172,6 +176,9 @@ Before displaying it, we want to reduce the tree with a set of rules
 to yield a more compact representation and push type information
 upwards to the extent practical. All the detail and sub-levels should
 stay available.
+
+This practically means labelling abstract types with shorthand
+descriptions derived from their inferior types.
 
 Examples:
 
@@ -190,8 +197,12 @@ non_empty_list -> byte
 For the above to work, some rules are needed for generating a textual
 representation of types.
 
+It is also possible to discover complex types based on certain
+patterns of their subtrees, e.g.:
+ - proplist()
+ - iodata(), iolist()
 
-also, compound types are discovered:
+Examples:
 
 non_empty_list -> char
   becomes:

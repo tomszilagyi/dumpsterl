@@ -5,6 +5,7 @@
         , add/2
         , join/2
         , get_count/1
+        , get_samples/1
         ]).
 
 -ifdef(TEST).
@@ -47,6 +48,8 @@ add({V,_A}=VA,
            hyperloglog = ds_hyperloglog:add_hash(Hash, Hyperloglog)}.
 
 get_count(#stats{count=Count}) -> Count.
+
+get_samples(#stats{sampler=Sampler}) -> ds_sampler:get_samples(Sampler).
 
 %% Join two statistics into one
 join(#stats{count = Count0,

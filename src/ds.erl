@@ -66,6 +66,11 @@ add({_V, A}=VA, {Class, Data0, SubSpec}, {'$fields', Fields}) -> % many subtypes
     {Class, update(VA, Class, Data0), merge_fields({Fields, A}, SubSpec)};
 add({_V, A}=VA, {Class, Data0, SubSpec}, {'$elements', Items}) -> % one subtype
     {Class, update(VA, Class, Data0), merge_items({Items, A}, SubSpec)};
+add({_V, A}=VA, {Class, Data0, SubSpec0}, {'$attrs', Dict}) -> % dict of subtypes
+    %% The attribute spec is stored in Ext, merge_attrs needs to modify it.
+    {Stats, Ext0} = update(VA, Class, Data0),
+    {Ext, SubSpec} = merge_attrs({Dict, A}, Ext0, SubSpec0),
+    {Class, {Stats, Ext}, SubSpec};
 add({_V, A}=VA, {Class, Data0, SubSpec}, {'$improper_list', Items, Tail}) ->
     %% one subtype for list items, one for tail
     {Class, update(VA, Class, Data0), merge_improper({Items, Tail, A}, SubSpec)};
@@ -94,6 +99,38 @@ merge_items({Vs, A}, []) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new('T'), Vs)];
 merge_items({Vs, A}, [SubSpec]) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, SubSpec, Vs)].
+
+%% merge a [{Key, Value}] dictionary into a list of sub-specs.
+%% Attrs contains a key list [Key] so that if the N-th item of
+%% Attrs is Key, then the N-th item of SpecL corresponds to the
+%% values associated with Key.
+%% Return {Attrs, SpecL} with updated data.
+merge_attrs({Dict, A}, Attrs, SpecL) ->
+    lists:foldl(fun({K, V}, Acc) -> merge_attr({K, V}, A, Acc) end,
+                {Attrs, SpecL}, Dict).
+
+merge_attr({K, V}, A, {Attrs0, SpecL0}) ->
+    case index(K, Attrs0) of
+        error ->
+            Attrs = lists:sort([K|Attrs0]),
+            Index = index(K, Attrs),
+            {SpecL1, SpecL2} = lists:split(Index-1, SpecL0),
+            SpecL = lists:append([SpecL1, [new('T', {V, A})], SpecL2]),
+            {Attrs, SpecL};
+        Index ->
+            {SpecL1, [Spec0|SpecL2]} = lists:split(Index-1, SpecL0),
+            Spec = add({V, A}, Spec0),
+            SpecL = lists:append([SpecL1, [Spec], SpecL2]),
+            {Attrs0, SpecL}
+    end.
+
+%% Return the first index N so that lists:nth(N, List) would return E
+%% or 'error' if E is not a member of List.
+index(E, List) -> index(E, List, 1).
+
+index(_E, [],_N) -> error;
+index(E, [E|_], N) -> N;
+index(E, [_|Rest], N) -> index(E, Rest, N+1).
 
 %% merge spec for improper list
 merge_improper(VA, []) ->
@@ -182,5 +219,12 @@ eq({Class, {Stats1, Ext}, ChL1},
         length(ChL1) =:= length(ChL2) andalso
         ChildrenEq;
 eq(_Spec0, _Spec1) -> false.
+
+index_test() ->
+    ?assertEqual(error, index(aaa, [])),
+    ?assertEqual(error, index(aaa, [a, "bbb", {c,999}])),
+    ?assertEqual(1, index(a, [a, "bbb", {c,999}])),
+    ?assertEqual(2, index("bbb", [a, "bbb", {c,999}])),
+    ?assertEqual(3, index({c,999}, [a, "bbb", {c,999}])).
 
 -endif.
