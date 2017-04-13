@@ -1,2 +1,4 @@
+.erlang.mk
 dumpsterl.d
+ebin
 include/config.hrl

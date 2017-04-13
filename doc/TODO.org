@@ -167,6 +167,15 @@ the spec to a minimum.  Differing counts of key occurrences will be
 reflected by the counters of each child spec, reflected by the Count
 column of the type parameter listing in the gui.
 
+*** TODO polymorphism of generic types
+
+PROBLEM: term is a list of bytes, OR a list of tuples, but these are
+never mixed within the same list. Currently the resulting spec will
+show that the list item type is a union of byte | tuple, but will
+not indicate that each individual list is either a list of bytes or a
+list of tuples. It would be better(?) if the nonempty_list was
+subclassed further for each subset of types encountered.
+
 *** TODO Type labeling / shorthand descriptions / reductions
 
 The raw end result of the probing stage will reflect the core Erlang

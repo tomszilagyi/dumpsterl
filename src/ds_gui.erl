@@ -2,7 +2,10 @@
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 %% Client API
--export([start_link/0, stop/1]).
+-export([ start_link/0
+        , start_link/1
+        , stop/1
+        ]).
 
 -include("config.hrl").
 -ifdef(CONFIG_WXGUI).
@@ -10,7 +13,7 @@
 -behaviour(wx_object).
 
 %% wx_object callbacks
--export([init/1, terminate/2,  code_change/3,
+-export([init/1, terminate/2, code_change/3,
          handle_info/2, handle_call/3, handle_cast/2, handle_event/2]).
 
 -include_lib("wx/include/wx.hrl").
@@ -28,7 +31,8 @@
         , lc_stack
         , lc_children
         , text_children
-        , text_stats
+        , html_win_stats
+        , stats_report_cfg
         , text_ext
         , zipper
         , is_generic_type
@@ -37,8 +41,11 @@
         }).
 
 start_link() ->
+    start_link("ds.bin").
+
+start_link(Filename) ->
     Server = wx:new(),
-    {_, _, _, Pid} = wx_object:start_link(?MODULE, [Server], []),
+    {_, _, _, Pid} = wx_object:start_link(?MODULE, [Server, Filename], []),
     {ok, Pid}.
 
 stop(Pid) ->
@@ -47,9 +54,8 @@ stop(Pid) ->
 init(Config) ->
     wx:batch(fun() -> do_init(Config) end).
 
-do_init([Server] = Config) ->
-    Filename = "ds.bin",
-    Zipper = load_zipper("ds.bin"),
+do_init([Server, Filename] = Config) ->
+    Zipper = load_zipper(Filename),
 
     Frame = wxFrame:new(Server, ?wxID_ANY, "Dumpsterl ["++Filename++"]", []),
     Panel = wxPanel:new(Frame, []),
@@ -108,10 +114,9 @@ do_init([Server] = Config) ->
     TopRightPanel = wxPanel:new(RightSplitter, []),
     TopRightSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(TopRightPanel, TopRightSizer),
-    TextStats = wxTextCtrl:new(TopRightPanel, ?wxID_ANY,
-                               [{value, "Statistics"},
-                                {style, ?wxDEFAULT bor ?wxTE_MULTILINE}]),
-    wxSizer:add(TopRightSizer, TextStats, SizerOpts),
+    HtmlWinStats = wxHtmlWindow:new(TopRightPanel, []),
+    wxHtmlWindow:connect(HtmlWinStats, command_html_link_clicked, []),
+    wxSizer:add(TopRightSizer, HtmlWinStats, SizerOpts),
 
     BottomRightPanel = wxPanel:new(RightSplitter, []),
     BottomRightSizer = wxBoxSizer:new(?wxVERTICAL),
@@ -137,7 +142,8 @@ do_init([Server] = Config) ->
                    panel_left=LeftPanel,
                    lc_stack=LC_Stack, lc_children=LC_Children,
                    text_children=TextChildren,
-                   text_stats=TextStats, text_ext=TextExt,
+                   html_win_stats=HtmlWinStats, stats_report_cfg=[],
+                   text_ext=TextExt,
                    zipper=Zipper},
     {Frame, update_gui(State)}.
 
@@ -158,6 +164,13 @@ handle_event(#wx{id = ?LIST_CTRL_CHILDREN,
     {noreply, update_gui(State)};
 handle_event(#wx{event = #wxSize{}}, State) ->
     {noreply, adjust_list_cols(State)};
+handle_event(#wx{event = #wxHtmlLink{linkInfo = #wxHtmlLinkInfo{href=Link}}},
+	     #state{stats_report_cfg=ReportCfg0, html_win_stats=HtmlWinStats,
+                    zipper=Zipper} = State) ->
+    ReportCfg = ds_reports:config_update(ReportCfg0, Link),
+    {Stats,_Ext} = ds_zipper:data(Zipper),
+    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
+    {noreply, State#state{stats_report_cfg=ReportCfg}};
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
     {noreply, State}.
@@ -189,7 +202,8 @@ terminate(_Reason, _State) ->
 
 update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_children=TextChildren,
-                  text_stats=TextStats, text_ext=TextExt,
+                  html_win_stats=HtmlWinStats, stats_report_cfg=ReportCfg,
+                  text_ext=TextExt,
                   zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
     Stack0 = ds_zipper:stack(Zipper),
@@ -209,9 +223,8 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
     State = adjust_list_cols(State1),
 
     {Stats, Ext} = ds_zipper:data(Zipper),
-    StatsStr = io_lib:format("~p", [Stats]),
+    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
     ExtStr = io_lib:format("~p", [Ext]),
-    wxTextCtrl:setValue(TextStats, StatsStr),
     wxTextCtrl:setValue(TextExt, ExtStr),
 
     State.
@@ -333,7 +346,7 @@ add_stack(_LC, [], DC, Acc,_N) ->
     Acc;
 add_stack(LC, [{Type, Count}|Rest], DC, Acc0, N) ->
     TypeStr = ds_types:type_to_string(Type),
-    CountStr = integer_to_list(Count),
+    CountStr = ds_utils:integer_to_sigfig(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
     wxListCtrl:insertItem(LC, N, ""),
     wxListCtrl:setItem(LC, N, 0, TypeStr),
@@ -343,7 +356,7 @@ add_stack(LC, [{ParentRef, Type, Data}|Rest], DC, Acc0, N) ->
     TypeStr = ParentRef ++ ds_types:type_to_string(Type),
     {Stats,_Ext} = Data,
     Count = ds_stats:get_count(Stats),
-    CountStr = integer_to_list(Count),
+    CountStr = ds_utils:integer_to_sigfig(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
     wxListCtrl:insertItem(LC, N, ""),
     wxListCtrl:setItem(LC, N, 0, TypeStr),
@@ -352,7 +365,7 @@ add_stack(LC, [{ParentRef, Type, Data}|Rest], DC, Acc0, N) ->
 add_stack(LC, [{No, Attribute, Type, Count}|Rest], DC, Acc0, N) ->
     NoStr = integer_to_list(No),
     TypeStr = ds_types:type_to_string(Type),
-    CountStr = integer_to_list(Count),
+    CountStr = ds_utils:integer_to_sigfig(Count),
     TextWidths = text_widths(DC, [NoStr, Attribute, TypeStr, CountStr]),
     Acc = fold_widths(TextWidths, Acc0),
     wxListCtrl:insertItem(LC, N, ""),
@@ -394,5 +407,6 @@ decode_binary_spec(Bin) ->
 -else.
 %% In case the GUI is disabled:
 start_link() -> throw(wx_gui_disabled).
+start_link(_) -> throw(wx_gui_disabled).
 stop(_) -> throw(wx_gui_disabled).
 -endif.

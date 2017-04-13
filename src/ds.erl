@@ -110,10 +110,10 @@ merge_attrs({Dict, A}, Attrs, SpecL) ->
                 {Attrs, SpecL}, Dict).
 
 merge_attr({K, V}, A, {Attrs0, SpecL0}) ->
-    case index(K, Attrs0) of
+    case ds_utils:index(K, Attrs0) of
         error ->
             Attrs = lists:sort([K|Attrs0]),
-            Index = index(K, Attrs),
+            Index = ds_utils:index(K, Attrs),
             {SpecL1, SpecL2} = lists:split(Index-1, SpecL0),
             SpecL = lists:append([SpecL1, [new('T', {V, A})], SpecL2]),
             {Attrs, SpecL};
@@ -123,14 +123,6 @@ merge_attr({K, V}, A, {Attrs0, SpecL0}) ->
             SpecL = lists:append([SpecL1, [Spec], SpecL2]),
             {Attrs0, SpecL}
     end.
-
-%% Return the first index N so that lists:nth(N, List) would return E
-%% or 'error' if E is not a member of List.
-index(E, List) -> index(E, List, 1).
-
-index(_E, [],_N) -> error;
-index(E, [E|_], N) -> N;
-index(E, [_|Rest], N) -> index(E, Rest, N+1).
 
 %% merge spec for improper list
 merge_improper(VA, []) ->
@@ -219,12 +211,5 @@ eq({Class, {Stats1, Ext}, ChL1},
         length(ChL1) =:= length(ChL2) andalso
         ChildrenEq;
 eq(_Spec0, _Spec1) -> false.
-
-index_test() ->
-    ?assertEqual(error, index(aaa, [])),
-    ?assertEqual(error, index(aaa, [a, "bbb", {c,999}])),
-    ?assertEqual(1, index(a, [a, "bbb", {c,999}])),
-    ?assertEqual(2, index("bbb", [a, "bbb", {c,999}])),
-    ?assertEqual(3, index({c,999}, [a, "bbb", {c,999}])).
 
 -endif.
