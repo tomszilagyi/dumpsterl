@@ -1,7 +1,8 @@
-%% Options handling for dumpsterl
-
+%% -*- coding: utf-8 -*-
 -module(ds_opts).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
+
+%% Options handling for dumpsterl
 
 -export([ keys/0
         , getopt/1

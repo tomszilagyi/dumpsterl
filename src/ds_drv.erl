@@ -1,4 +1,4 @@
-%% Driver functions for dumpsterl
+%% -*- coding: utf-8 -*-
 -module(ds_drv).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

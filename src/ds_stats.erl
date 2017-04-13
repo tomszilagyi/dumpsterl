@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 -module(ds_stats).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 -module(ds_drv_test).
 
 -define(M, ds_drv).

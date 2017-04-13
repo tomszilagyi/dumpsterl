@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 -module(ds_sampler).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

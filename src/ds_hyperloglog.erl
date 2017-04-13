@@ -1,3 +1,4 @@
+%% -*- coding: utf-8 -*-
 -module(ds_hyperloglog).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

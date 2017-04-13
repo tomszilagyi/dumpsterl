@@ -1,8 +1,9 @@
-%% Zipper tree for navigating a spec
-%% inspired by http://ferd.ca/yet-another-article-on-zippers.html
-
+%% -*- coding: utf-8 -*-
 -module(ds_zipper).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
+
+%% Zipper tree for navigating a spec
+%% inspired by http://ferd.ca/yet-another-article-on-zippers.html
 
 -export([ from_tree/1
         , class/1, data/1, stack/1, child_list/1

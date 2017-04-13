@@ -1,6 +1,8 @@
-%% Progress indicator and result dumper for dumpsterl
+%% -*- coding: utf-8 -*-
 -module(ds_progress).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
+
+%% Progress indicator and result dumper for dumpsterl
 
 -export([ init/0
         , init/1
