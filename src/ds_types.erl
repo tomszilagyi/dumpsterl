@@ -187,6 +187,8 @@ ext_new(_Class) -> [].
 
 %% class-specific per-term updaters
 ext_add(VA, atom, Ext) -> ext_add_atom(VA, Ext);
+ext_add(VA, binary, Ext) -> ext_add_bitstring(VA, Ext);
+ext_add(VA, bitstring, Ext) -> ext_add_bitstring(VA, Ext);
 ext_add(VA, nonempty_list, Ext) -> ext_add_nonempty_list(VA, Ext);
 ext_add(_V,_Class, Ext) -> Ext.
 
@@ -198,20 +200,31 @@ ext_add_atom({V, Attrs}, Ext) ->
           end,
     orddict:store(V, PVS, Ext).
 
+%% For bit strings (including binaries), maintain a histogram of bit size
+ext_add_bitstring({V,_Attrs}, Ext) ->
+    histogram_add(bit_size(V), Ext).
+
 %% For lists, maintain a histogram of lengths
 ext_add_nonempty_list({V,_Attrs}, Ext) ->
-    orddict:update_counter(length(V), 1, Ext).
+    histogram_add(length(V), Ext).
 
 %% class-specific joins
 ext_join(atom, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
-ext_join(nonempty_list, Ext1, Ext2) -> ext_join_nonempty_list(Ext1, Ext2);
+ext_join(binary, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
+ext_join(bitstring, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
+ext_join(nonempty_list, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(_Class, Ext1,_Ext2) -> Ext1.
 
 ext_join_atom(Ext1, Ext2) ->
     orddict:merge(fun(_K, V1, V2) -> ds_pvattrs:join(V1, V2) end, Ext1, Ext2).
 
-ext_join_nonempty_list(Ext1, Ext2) ->
-    orddict:merge(fun(_K, N1, N2) -> N1 + N2 end, Ext1, Ext2).
+%% A histogram measuring the occurrence number of factor levels is
+%% represented as an orddict of {Count, Factor}
+histogram_add(Value, Hist) ->
+    orddict:update_counter(Value, 1, Hist).
+
+histogram_join(Hist1, Hist2) ->
+    orddict:merge(fun(_K, N1, N2) -> N1 + N2 end, Hist1, Hist2).
 
 %% Tests
 -ifdef(TEST).
