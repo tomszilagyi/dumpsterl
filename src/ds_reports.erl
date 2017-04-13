@@ -16,6 +16,9 @@
 -define(COLOR_PTHEAD,  "#d0d0d0").
 -define(COLOR_TABHEAD, "#e0e0ff").
 -define(COLOR_LINK,    "#000000").
+-define(COLOR_LINEBRK, "#ff0000").
+
+-define(HTML_LINEBRK, "<font color=\"" ?COLOR_LINEBRK "\">\\</font>\n").
 
 stats_page(Stats, ReportCfg) ->
     MainTable = main_table(Stats, ReportCfg),
@@ -190,8 +193,21 @@ invert_dir(ascending) -> descending;
 invert_dir(descending) -> ascending.
 
 %% Generate a HTML-encoded string from a data structure encoding HTML.
-html({str, Str}) -> html_esc(Str);
-html({term, Term}) -> html({code, [], [{str, io_lib:format("~40p", [Term])}]});
+%%
+%% HTML is represented as a recursive data structure:
+%%   {Tag, Attributes, Contents}
+%% where Tag is an atom;
+%%       Attributes is a list of {Attr, Value}, and
+%%       Contents is a list of children tags.
+%%
+%% Special 'terminal' tags {raw, Str}, {str, Str} and {term, Term}
+%% produce direct output with different degrees of processing.
+html({raw, Str}) -> Str;
+html({str, Str}) -> html_encode(Str);
+html({term, Term}) ->
+    RawStr = io_lib:format("~40p", [Term]),
+    Str = nl_encode(linewrap(html_encode(RawStr), 42)),
+    html({code, [], [{raw, Str}]});
 html(Tags) when is_list(Tags) -> lists:concat([html(T) || T <- Tags]);
 html(Tag) when is_atom(Tag) -> lists:concat(["<", Tag, ">"]);
 html({Tag, Attributes, Contents}) ->
@@ -203,18 +219,46 @@ html({Tag, Attributes, Contents}) ->
 attr_to_str({Attr, Value}) -> lists:concat([Attr, "=\"", Value, "\""]);
 attr_to_str(Attr) -> lists:concat([Attr]).
 
-html_esc(C) when is_integer(C) -> C;
-html_esc(S) -> html_esc(lists:flatten(S), []).
+%% Insert line breaks and preceding break marks (backslash in
+%% ?COLOR_LINEBRK) into lines longer than Cols.
+%% We receive a html-escaped string, so take care not to break it
+%% in the middle of an HTML entity.
+linewrap(String, Cols) ->
+    Lines = string:tokens(String, "\r\n"),
+    string:join([wrap(Line, Cols) || Line <- Lines], "\n").
 
-html_esc([], Acc) -> lists:flatten(lists:reverse(Acc));
-html_esc([$< | T], Acc) -> html_esc(T, ["&lt;" | Acc]);
-html_esc([$> | T], Acc) -> html_esc(T, ["&gt;" | Acc]);
-html_esc([$& | T], Acc) -> html_esc(T, ["&amp;" | Acc]);
-html_esc([$" | T], Acc) -> html_esc(T, ["&quot;" | Acc]);
-html_esc([$' | T], Acc) -> html_esc(T, ["&#39;" | Acc]);
-html_esc([$  | T], Acc) -> html_esc(T, ["&nbsp;" | Acc]);
-html_esc([$\n | T], Acc) -> html_esc(T, ["<br>" | Acc]);
-html_esc([H|T], Acc) -> html_esc(T, [H|Acc]).
+wrap(Line, Cols) ->
+    wrap(Line, [], 0, Cols).
+
+wrap([], Acc,_N,_Cols) -> lists:flatten(lists:reverse(Acc));
+wrap(Line, Acc, Cols, Cols) -> % Time for a smooth line break:
+    wrap(Line, [?HTML_LINEBRK|Acc], 0, Cols);
+wrap([$&|Rest], Acc, N, Cols) ->
+    IxCloseEntity = string:chr(Rest, $;),
+    {R0, R1} = lists:split(IxCloseEntity, Rest),
+    wrap(R1, [[$&|R0]|Acc], N+1, Cols);
+wrap([C|Rest], Acc, N, Cols) ->
+    wrap(Rest, [C|Acc], N+1, Cols).
+
+%% Encode HTML special characters into their respective entities
+html_encode(C) when is_integer(C) -> C;
+html_encode(S) -> html_encode(lists:flatten(S), []).
+
+html_encode([], Acc) -> lists:flatten(lists:reverse(Acc));
+html_encode([$< | T], Acc) -> html_encode(T, ["&lt;" | Acc]);
+html_encode([$> | T], Acc) -> html_encode(T, ["&gt;" | Acc]);
+html_encode([$& | T], Acc) -> html_encode(T, ["&amp;" | Acc]);
+html_encode([$" | T], Acc) -> html_encode(T, ["&quot;" | Acc]);
+html_encode([$' | T], Acc) -> html_encode(T, ["&#39;" | Acc]);
+html_encode([$  | T], Acc) -> html_encode(T, ["&nbsp;" | Acc]);
+html_encode([H|T], Acc) -> html_encode(T, [H|Acc]).
+
+%% Encode newlines so they remain visible in HTML
+nl_encode(S) -> nl_encode(S, []).
+
+nl_encode([], Acc) -> lists:flatten(lists:reverse(Acc));
+nl_encode([$\n | T], Acc) -> nl_encode(T, ["<br>\n" | Acc]);
+nl_encode([H|T], Acc) -> nl_encode(T, [H|Acc]).
 
 %% Tests
 -ifdef(TEST).
@@ -250,11 +294,26 @@ config_update_test() ->
                                 {myframeid, [{sort, 1, ascending}]}],
                                "myframeid.3")).
 
+linewrap_test() ->
+    ?assertEqual("abcdefghij" ++ ?HTML_LINEBRK ++
+                 "klmnopqrst" ++ ?HTML_LINEBRK ++ "uvwxyz",
+                 linewrap("abcdefghijklmnopqrstuvwxyz", 10)),
+    ?assertEqual("abcd&quot;fghij" ++ ?HTML_LINEBRK ++
+                 "klmnopqrs&#1234;" ++ ?HTML_LINEBRK ++ "uvwxyz",
+                 linewrap("abcd&quot;fghijklmnopqrs&#1234;uvwxyz", 10)).
+
 html_test() ->
     ?assertEqual("<br>", html(br)),
     ?assertEqual("<body></body>", html({body, [], []})),
-    ?assertEqual("<table width=\"100%\" cellspacing=\"0\"></table>",
-                 html({table, [{width, "100%"}, {cellspacing, 0}], []})),
+    ?assertEqual("<table width=\"100%\" cellspacing=\"0\">"
+                 "<tr bgcolor=\"#123456\">"
+                 "<td align=\"left\">Cell</td>"
+                 "<td>I&#39;m&nbsp;valid&nbsp;&amp;&nbsp;&nbsp;encoded!</td>"
+                 "</tr></table>",
+                 html({table, [{width, "100%"}, {cellspacing, 0}],
+                       [{tr, [{bgcolor, "#123456"}],
+                         [{td, [{align, left}], [{str, "Cell"}]},
+                          {td, [], [{str, "I'm valid &  encoded!"}]}]}]})),
     ?assertEqual("<html><body bgcolor=\"#123456\" align=\"left\">"
                  "<table cellpadding=\"0\"><hr><br></table></body></html>",
                  html({html, [],
