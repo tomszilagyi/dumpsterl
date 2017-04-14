@@ -13,8 +13,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(COLOR_PTHEAD,  "#d0d0d0").
--define(COLOR_TABHEAD, "#e0e0ff").
+-define(COLOR_PTHEAD,  "#a0c0ff").
+-define(COLOR_TABHEAD, "#cceeff").
+-define(COLOR_TABRULE, "#ddffee").
 -define(COLOR_LINK,    "#000000").
 -define(COLOR_LINEBRK, "#ff0000").
 
@@ -47,51 +48,88 @@ main_table(Stats,_ReportCfg) ->
                  {td, [], [{str, CardStr}]}]}]}].
 
 pts_samples_table(Pts, Samples, ReportCfg) ->
+    AttrCols = tk_attrs_present(Pts) orelse tk_attrs_present(Samples),
+    Cols = case AttrCols of
+               true  -> 6;
+               false -> 2
+           end,
     {table, [{width, "100%"}, {cellspacing, 0}],
      [{tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
-       [{th, [{align, left}, {colspan, 4}],
-         [{font, [{size, "+1"}],
-           [{str, "Points of interest"}]}]}]},
-      [pt_table(Pt, ReportCfg) || Pt <- Pts],
+       [{th, [{align, left}, {colspan, Cols}],
+         [{font, [{size, "+1"}], [{str, "Extrema"}]}]}]},
+      [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
       {tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
-       [{th, [{align, left}, {colspan, 4}],
-         [{font, [{size, "+1"}],
-           [{str, "Samples"}]}]}]},
-      samples_table(Samples, ReportCfg)]}.
+       [{th, [{align, left}, {colspan, Cols}],
+         [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
+      samples_table(Samples, AttrCols, ReportCfg)]}.
 
-pt_table({Pt, Value, PVAttrs}, ReportCfg) ->
-    Count = ds_pvattrs:get_count(PVAttrs),
-    {MinTK, MaxTK} = ds_pvattrs:get_timespan(PVAttrs),
-    Data = [{Value, Count, MinTK, MaxTK}],
+pt_table({Pt, Value, PVAttrs}, AttrCols, Cols, ReportCfg) ->
+    Data = [value_row({Value, PVAttrs}, AttrCols)],
     [{tr, [], [{td, [], []}]},
      {tr, [{bgcolor, ?COLOR_PTHEAD}],
-      [{th, [{align, left}, {colspan, 4}],
+      [{th, [{align, left}, {colspan, Cols}],
         [{term, Pt}]}]}
-     | frame(Pt, stats_headers(), Data, fun stats_display_f/1, ReportCfg)].
+     | frame(Pt, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg)].
 
-samples_table(Values, ReportCfg) ->
-    Data = [value_row(V) || V <- Values],
-    frame(samples, stats_headers(), Data, fun stats_display_f/1, ReportCfg).
+samples_table(Values, AttrCols, ReportCfg) ->
+    Data = [value_row(V, AttrCols) || V <- Values],
+    frame(samples, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg).
 
-value_row({Value, PVAttrs}) ->
+value_row({Value, PVAttrs}, false) ->
     Count = ds_pvattrs:get_count(PVAttrs),
-    {MinTK, MaxTK} = ds_pvattrs:get_timespan(PVAttrs),
-    {Value, Count, MinTK, MaxTK}.
+    {Value, Count};
+value_row({Value, PVAttrs}, true) ->
+    Count = ds_pvattrs:get_count(PVAttrs),
+    {{MinTS, MinKey}, {MaxTS, MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
+    {Value, Count, MinTS, MinKey, MaxTS, MaxKey}.
 
-stats_display_f({Value, Count, MinTK, MaxTK}) ->
+stats_display_f({Value, Count}) ->
+    {{term, Value},
+     {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]}};
+stats_display_f({Value, Count, MinTS, MinKey, MaxTS, MaxKey}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]},
-     {term, MinTK},
-     {term, MaxTK}}.
+     {td, [{align, right}], [blank_if_missing(MinTS)]},
+     {td, [{align, right}], [blank_if_missing(MinKey)]},
+     {td, [{align, right}], [blank_if_equal(MaxTS, MinTS)]},
+     {td, [{align, right}], [blank_if_equal(MaxKey, MinKey)]}}.
 
-stats_headers() ->
-    [["", "", {"Range", [{colspan, 2}]}],
+blank_if_missing(undefined) -> {raw, ""};
+blank_if_missing(V)         -> {term, V}.
+
+blank_if_equal(V, V)    -> {raw, ""};
+blank_if_equal(V,_Vref) -> blank_if_missing(V).
+
+stats_headers(false) ->
+    [[{"Value", [{align, left}]},
+      {"Count", [{align, right}]}]];
+stats_headers(true) ->
+    [["", "",
+      {"First", [{align, right}]}, {"First", [{align, right}]},
+      {"Last", [{align, right}]}, {"Last", [{align, right}]}],
      [{"Value", [{align, left}]},
       {"Count", [{align, right}]},
-      "First",
-      "Last"]].
+      {"Timestamp", [{align, right}]},
+      {"Key", [{align, right}]},
+      {"Timestamp", [{align, right}]},
+      {"Key", [{align, right}]}]].
+
+%% See if there are any timestamp/key annotations in the dataset.
+%% If there are none, the relevant columns will be omitted.
+tk_attrs_present([]) -> false;
+tk_attrs_present([{_Pt,_Value, PVAttrs}|Rest]) ->
+    tk_attrs_present(PVAttrs, Rest);
+tk_attrs_present([{_Value, PVAttrs}|Rest]) ->
+    tk_attrs_present(PVAttrs, Rest).
+
+tk_attrs_present(PVAttrs, Rest) ->
+    case ds_pvattrs:get_timespan(PVAttrs) of
+        {{undefined, undefined}, {undefined, undefined}} ->
+            tk_attrs_present(Rest);
+        _ -> true
+    end.
 
 %% A frame shows tabular data and allows the user to click on headers
 %% to sort the data according to a certain column.
@@ -115,7 +153,7 @@ frame(Id, Headers, Data0, DisplayFun, ReportCfg) ->
     Data = [DisplayFun(D) || D <- Data1],
     NDataRows = length(Data),
     HeaderRows = frame_headers(Id, Headers, Sort, NDataRows),
-    [HeaderRows | [frame_data_row(D) || D <- Data]].
+    [HeaderRows | stripe_rows([frame_data_row(D) || D <- Data])].
 
 frame_sort(Data, false) -> Data;
 frame_sort(Data, {sort, N, Dir}) -> lists:sort(mk_sort_fun(N, Dir), Data).
@@ -157,6 +195,17 @@ frame_header_caption(Caption, N, {sort, N, ascending}) -> Caption ++ " ↓";
 frame_header_caption(Caption, N, {sort, N, descending}) -> Caption ++ " ↑";
 frame_header_caption(Caption,_N, {sort,_SortColN,_SortDir}) -> Caption;
 frame_header_caption(Caption,_N, false) -> Caption.
+
+%% Take a list of table rows and set bgcolor attribute on every other
+%% to achieve the striped rows effect.
+stripe_rows(Rows) -> stripe_rows(Rows, [], false).
+
+stripe_rows([], Acc,_Stripe) -> lists:reverse(Acc);
+stripe_rows([{tr, Attrs0, Content}|Rest], Acc, true) ->
+    Attrs = [{bgcolor, ?COLOR_TABRULE}|Attrs0],
+    stripe_rows(Rest, [{tr, Attrs, Content}|Acc], false);
+stripe_rows([Row|Rest], Acc, false) ->
+    stripe_rows(Rest, [Row|Acc], true).
 
 %% Report config
 %%
@@ -205,8 +254,8 @@ invert_dir(descending) -> ascending.
 html({raw, Str}) -> Str;
 html({str, Str}) -> html_encode(Str);
 html({term, Term}) ->
-    RawStr = io_lib:format("~40p", [Term]),
-    Str = nl_encode(linewrap(html_encode(RawStr), 42)),
+    RawStr = io_lib:format("~80p", [Term]),
+    Str = nl_encode(linewrap(html_encode(RawStr), 82)),
     html({code, [], [{raw, Str}]});
 html(Tags) when is_list(Tags) -> lists:concat([html(T) || T <- Tags]);
 html(Tag) when is_atom(Tag) -> lists:concat(["<", Tag, ">"]);

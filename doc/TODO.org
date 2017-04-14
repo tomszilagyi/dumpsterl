@@ -268,14 +268,32 @@ see them in action.
   counts are always all identical to that of the complex type).
   Field is the field number and Attribute is the field name.
 
+*** GUI toolbars
+**** at the top of spec window
+- show probe metadata
+- set timestamp decoder function
+**** at the top of report
+- enable/disable attribute columns in report
+- save/export report page
+*** Display probe metadata in GUI
+*** Allow setting timestamp decoder function
+- manually supply timestamp format function
+  e.g. if it turns out the ts is in gregorian seconds, allow
+  user to set fun calendar:gregorian_seconds_to_datetime/1.
+*** Manage record attributes
+- GUI for displaying record attributes in Ext
+- allow choosing another one (the first is used as a default)
+- allow manually adding/removing attributes (e.g. if none have been
+  collected)
+*** GUI for Ext data:
+- size/length distribution histogram for lists, bitstrings and
+  binaries
+- dict of per-value stats for atoms
 *** TODO additional gui features
 - search: allow entering a piece of string, data, etc.
 - toolbar: load, save, generate report, exit, etc.
 - manually add field information in case it could not be
   gathered automatically
-- manually supply timestamp format function
-  e.g. if it turns out the ts is in gregorian seconds, allow
-  user to set fun calendar:gregorian_seconds_to_datetime/1.
 - allow opening and viewing multiple specs perhaps as part
   of a MDI windowing solution (wx: aui)
 - allow exporting the lists of data (e.g. samples of a node)
