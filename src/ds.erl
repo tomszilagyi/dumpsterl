@@ -47,7 +47,7 @@
 %%   up to Class, but the tree is uniformly recursive through SubSpecs.
 
 %% Initialize a new data spec
-new() -> new('T').
+new() -> new(term).
 
 new(Class) ->
     Data = {ds_stats:new(), ds_types:ext_new(Class)},
@@ -91,13 +91,13 @@ merge(VA, Class, Spec) ->
 
 %% merge the per-field sub-specs of compound types
 merge_fields({Vs, A}, []) ->
-    lists:map(fun(V) -> new('T', {V, A}) end, Vs);
+    lists:map(fun(V) -> new(term, {V, A}) end, Vs);
 merge_fields({Vs, A}, SubSpec) ->
     lists:map(fun({V, S}) -> add({V, A}, S) end, lists:zip(Vs, SubSpec)).
 
 %% merge elements of container types into the single inferior spec
 merge_items({Vs, A}, []) ->
-    [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new('T'), Vs)];
+    [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, new(term), Vs)];
 merge_items({Vs, A}, [SubSpec]) ->
     [lists:foldl(fun(V, Spec) -> add({V, A}, Spec) end, SubSpec, Vs)].
 
@@ -116,7 +116,7 @@ merge_attr({K, V}, A, {Attrs0, SpecL0}) ->
             Attrs = lists:sort([K|Attrs0]),
             Index = ds_utils:index(K, Attrs),
             {SpecL1, SpecL2} = lists:split(Index-1, SpecL0),
-            SpecL = lists:append([SpecL1, [new('T', {V, A})], SpecL2]),
+            SpecL = lists:append([SpecL1, [new(term, {V, A})], SpecL2]),
             {Attrs, SpecL};
         Index ->
             {SpecL1, [Spec0|SpecL2]} = lists:split(Index-1, SpecL0),
@@ -127,7 +127,7 @@ merge_attr({K, V}, A, {Attrs0, SpecL0}) ->
 
 %% merge spec for improper list
 merge_improper(VA, []) ->
-    merge_improper(VA, [new('T'), new('T')]);
+    merge_improper(VA, [new(term), new(term)]);
 merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
     [ListSpec] = merge_items({Vs, A}, [ListSpec0]),
     TailSpec = add({Vt, A}, TailSpec0),
@@ -158,7 +158,7 @@ join_specs(Acc0, [{Class,_Data,_ChildL}=Spec | Rest]) ->
 %% Compact the tree by cutting unnecessary abstract types
 %% (those having a single child and no terms captured themselves)
 %% from the tree. E.g. if all terms are tuples of three, the tree
-%%   'T' -> tuple -> {tuple, 3} -> ...
+%%   term -> tuple -> {tuple, 3} -> ...
 %% will be simplified to
 %%   {tuple, 3} -> ...
 %% without any loss of information.

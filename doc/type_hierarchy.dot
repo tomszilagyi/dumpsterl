@@ -36,7 +36,7 @@ digraph type_hierarchy {
 
         {       /* This is a hack to spare some figure real estate. */
                 rank = same;
-                pos_integer; char; byte;
+                char; byte; 0;
         }
 
         term -> atom;
@@ -58,12 +58,11 @@ digraph type_hierarchy {
         integer -> non_neg_integer;
         integer -> neg_integer;
 
-        non_neg_integer -> 0;
-        non_neg_integer -> pos_integer;
-
-        pos_integer -> char;
+        non_neg_integer -> char;
 
         char -> byte;
+
+        byte -> 0;
 
         bitstring -> binary;
         binary -> "<< >>";
