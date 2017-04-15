@@ -5,6 +5,8 @@ PROJECT_VERSION = 0.1.0
 # Whitespace to be used when creating files from templates.
 SP = 4
 
+DEPS = asciideck
+
 include erlang.mk
 
 CONFIG_HRL = include/config.hrl

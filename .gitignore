@@ -1,4 +1,12 @@
 .erlang.mk
+deps
+doc/html
+doc/edoc-info
+doc/erlang.png
+doc/stylesheet.css
+doc/*.html
+doc/*.pdf
 dumpsterl.d
 ebin
 include/config.hrl
+xrefr

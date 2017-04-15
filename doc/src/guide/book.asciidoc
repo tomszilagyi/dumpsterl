@@ -1,0 +1,10 @@
+= Dumpsterl User Guide
+Tom Szilagyi
+
+The purpose of Dumpsterl is to provide a powerful, extensible and
+user-friendly framework for data exploration in NoSQL environments.
+
+[graphviz]
+---------------------------------------------------------------------
+include::../../type_hierarchy.dot[]
+---------------------------------------------------------------------

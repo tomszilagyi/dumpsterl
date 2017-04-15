@@ -10,7 +10,7 @@ Stuff that definitely needs treatment before the initial public release
 ** General
 *** TODO documentation
 - EDoc should be generated and contain API documentation
-- AsciiDoc should be generated and contain user manual
+- AsciiDoc should be generated and contain user guide
 
 *** TODO reorg modules
   - ds -> ds_core or ds_spec or ds_tree
