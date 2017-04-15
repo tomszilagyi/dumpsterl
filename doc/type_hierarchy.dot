@@ -1,0 +1,86 @@
+digraph type_hierarchy {
+        rankdir=LR;
+        node [fontname="NewCenturySchlbk-Roman"];
+        ordering=out;
+        pad=0.25;
+
+        fontsize=24;
+        label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD VALIGN="top" HEIGHT="48">Erlang type hierarchy (as seen by Dumpsterl)</TD></TR></TABLE>>;
+        labelloc=top;
+        labeljust=center;
+
+        {
+                node [style=filled; fillcolor="#D0D0D0"];
+                term;
+        }
+
+        {
+                node [shape=box; style=filled; fillcolor="#D0EEFF"];
+                rank = same;
+
+                map;
+                nonempty_list;
+                improper_list;
+                "{tuple, Size}";
+                "{record, {Name, Size}}";
+        }
+
+        {
+                node [shape=box; style=filled; fillcolor="#D0D0D0"];
+                _attrs [label=<T<SUB>attr1</SUB>, T<SUB>attr2</SUB>, ...>];
+                _nonempty_elements [label=<T<SUB>elem</SUB>>];
+                _improper_elements [label=<T<SUB>elem</SUB>, T<SUB>tail</SUB>>];
+                _tuple_fields [label=<T<SUB>1</SUB>, T<SUB>2</SUB>, ... T<SUB>n</SUB>>];
+                _record_fields [label=<T<SUB>2</SUB>, T<SUB>3</SUB>, ... T<SUB>n</SUB>>];
+        }
+
+        {       /* This is a hack to spare some figure real estate. */
+                rank = same;
+                pos_integer; char; byte;
+        }
+
+        term -> atom;
+        term -> number;
+        term -> bitstring;
+        term -> pid;
+        term -> port;
+        term -> reference;
+        term -> fun;
+        term -> list;
+        term -> tuple;
+        term -> map;
+
+        atom -> boolean;
+
+        number -> integer;
+        number -> float;
+
+        integer -> non_neg_integer;
+        integer -> neg_integer;
+
+        non_neg_integer -> 0;
+        non_neg_integer -> pos_integer;
+
+        pos_integer -> char;
+
+        char -> byte;
+
+        bitstring -> binary;
+        binary -> "<< >>";
+
+        fun -> "{fun, Arity}";
+
+        list -> "[ ]";
+        list -> nonempty_list;
+        list -> improper_list;
+
+        tuple -> "{ }";
+        tuple -> "{tuple, Size}";
+        tuple -> "{record, {Name, Size}}";
+
+        nonempty_list -> _nonempty_elements [style="dashed"];
+        improper_list -> _improper_elements [style="dashed"];
+        "{tuple, Size}" -> _tuple_fields [style="dashed"];
+        "{record, {Name, Size}}" -> _record_fields [style="dashed"];
+        map -> _attrs [style="dashed"];
+}

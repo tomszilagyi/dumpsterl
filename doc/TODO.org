@@ -112,6 +112,7 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
    - run, stop, refine settings, run, ...
  - show last dump size as part of progress status line
 *** TODO probe command shell: additional features/ideas
+ - when setting a table for disk_log and dets, check if file exists
  - help listing/browsing available tables
  - show attributes to help choosing the right spec
  - support syntax to enter complex field specs

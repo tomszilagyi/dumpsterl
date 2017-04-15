@@ -20,6 +20,7 @@ function deps() {
 cat <<EOF > $DOT
 digraph ModuleDeps {
     rankdir = TD;
+    node [fontname="NewCenturySchlbk-Roman"];
 
 EOF
 
