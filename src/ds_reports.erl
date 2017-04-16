@@ -27,7 +27,10 @@ stats_page(Stats, ReportCfg) ->
                                  ds_stats:get_samples(Stats),
                                  ReportCfg),
     Page = {html, [],
-            [{body, [{link, ?COLOR_LINK},
+            [{head, [],
+              [{meta, [{'http-equiv', "Content-Type"},
+                       {content, "text/html; charset=UTF-8"}], []}]},
+             {body, [{link, ?COLOR_LINK},
                      {alink, ?COLOR_LINK},
                      {vlink, ?COLOR_LINK}],
               [{font, [{size, "-1"}],
@@ -57,7 +60,7 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
      [{tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
        [{th, [{align, left}, {colspan, Cols}],
-         [{font, [{size, "+1"}], [{str, "Extrema"}]}]}]},
+         [{font, [{size, "+1"}], [{str, "Extremes"}]}]}]},
       [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
       {tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
@@ -254,7 +257,7 @@ invert_dir(descending) -> ascending.
 html({raw, Str}) -> Str;
 html({str, Str}) -> html_encode(Str);
 html({term, Term}) ->
-    RawStr = io_lib:format("~80p", [Term]),
+    RawStr = io_lib:format("~80tp", [Term]),
     Str = nl_encode(linewrap(html_encode(RawStr), 82)),
     html({code, [], [{raw, Str}]});
 html(Tags) when is_list(Tags) -> lists:concat([html(T) || T <- Tags]);
@@ -353,7 +356,15 @@ linewrap_test() ->
 
 html_test() ->
     ?assertEqual("<br>", html(br)),
-    ?assertEqual("<body></body>", html({body, [], []})),
+    ?assertEqual("<html><head><meta http-equiv=\"Content-Type\" "
+                 "content=\"text/html; charset=UTF-8\"></meta></head>"
+                 "<body></body></html>",
+                 html({html, [],
+                       [{head, [],
+                         [{meta, [{'http-equiv', "Content-Type"},
+                                  {content, "text/html; charset=UTF-8"}],
+                           []}]},
+                        {body, [], []}]})),
     ?assertEqual("<table width=\"100%\" cellspacing=\"0\">"
                  "<tr bgcolor=\"#123456\">"
                  "<td align=\"left\">Cell</td>"
