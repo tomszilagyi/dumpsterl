@@ -7,6 +7,7 @@
 %% Client API
 -export([ stats_page/2
         , config_update/2
+        , config_store/3
         ]).
 
 -ifdef(TEST).
@@ -56,6 +57,27 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
                true  -> 6;
                false -> 2
            end,
+    RangeGraph =
+        case AttrCols of
+            true ->
+                %% FIXME RangeData contains duplicates if the extremes
+                %% are also present in samples!
+                %% FIXME RangeData should be sorted in the same order as the
+                %% frame data!
+                RangeData = extract_range_data(Pts ++ Samples),
+                {width, Width} = config_lookup(report, width, ReportCfg),
+                PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-25}],
+                                                            RangeData),
+                [{tr, [], [{td, [], [br]}]}, % vskip
+                 {tr, [],
+                  [{th, [{align, left}, {colspan, Cols}],
+                    [{font, [{size, "+1"}], [{str, "Value ranges"}]}]}]},
+                 {tr, [],
+                  [{td, [{align, left}, {colspan, Cols}],
+                    [{img, [{src, PngFile}], []}]}]}];
+            false ->
+                []
+        end,
     {table, [{width, "100%"}, {cellspacing, 0}],
      [{tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
@@ -66,7 +88,7 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
       {tr, [],
        [{th, [{align, left}, {colspan, Cols}],
          [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
-      samples_table(Samples, AttrCols, ReportCfg)]}.
+      samples_table(Samples, AttrCols, ReportCfg) ++ RangeGraph]}.
 
 pt_table({Pt, Value, PVAttrs}, AttrCols, Cols, ReportCfg) ->
     Data = [value_row({Value, PVAttrs}, AttrCols)],
@@ -132,6 +154,26 @@ tk_attrs_present(PVAttrs, Rest) ->
         {{undefined, undefined}, {undefined, undefined}} ->
             tk_attrs_present(Rest);
         _ -> true
+    end.
+
+%% Extract range data from tk_attrs
+%% Return a list of {Value, FirstTs, LastTs} tuples
+extract_range_data(Data) -> extract_range_data(Data, []).
+
+extract_range_data([], Acc) -> Acc;
+extract_range_data([{_Pt, Value, PVAttrs}|Rest], Acc) ->
+    case ds_pvattrs:get_timespan(PVAttrs) of
+        {{undefined,_}, {undefined,_}} ->
+            extract_range_data(Rest, Acc);
+        {{TsMin,_}, {TsMax,_}} ->
+            extract_range_data(Rest, [{Value, TsMin, TsMax}|Acc])
+    end;
+extract_range_data([{Value, PVAttrs}|Rest], Acc) ->
+    case ds_pvattrs:get_timespan(PVAttrs) of
+        {{undefined,_}, {undefined,_}} ->
+            extract_range_data(Rest, Acc);
+        {{TsMin,_}, {TsMax,_}} ->
+            extract_range_data(Rest, [{Value, TsMin, TsMax}|Acc])
     end.
 
 %% A frame shows tabular data and allows the user to click on headers

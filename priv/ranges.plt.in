@@ -1,0 +1,11 @@
+set terminal pngcairo size $xsize,$ysize enhanced font "Verdana,10"
+set encoding utf8
+set output $pngfile
+set key off
+set offsets graph 0.05, 0.05, 0.05, 0.05
+set xdata time
+set timefmt "%s"
+set xtics format $xtics_format $xtics_interval
+set yrange [$ymin:$ymax]
+plot $datafile using 1:2:3:4:ytic(5) with xerrorbars pt 0 lc "blue"
+

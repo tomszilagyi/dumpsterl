@@ -29,6 +29,7 @@
         , frame
         , panel_main
         , panel_left
+        , panel_right
         , lc_stack
         , lc_children
         , text_children
@@ -99,7 +100,6 @@ do_init([Server, Filename] = Config) ->
     wxSizer:add(BottomLeftSizer, LC_Children, SizerOpts),
     setup_child_list_cols(LC_Children, false),
     wxListCtrl:connect(LC_Children, command_list_item_selected, []),
-    wxListCtrl:connect(LC_Children, size, [{skip, true}]),
 
     wxSplitterWindow:splitHorizontally(LeftSplitter, TopLeftPanel, BottomLeftPanel),
     wxSplitterWindow:setSashGravity(LeftSplitter, 0.5),
@@ -140,7 +140,7 @@ do_init([Server, Filename] = Config) ->
 
     wxFrame:show(Frame),
     State = #state{config=Config, frame=Frame, panel_main=Panel,
-                   panel_left=LeftPanel,
+                   panel_left=LeftPanel, panel_right=RightPanel,
                    lc_stack=LC_Stack, lc_children=LC_Children,
                    text_children=TextChildren,
                    html_win_stats=HtmlWinStats, stats_report_cfg=[],
@@ -164,14 +164,11 @@ handle_event(#wx{id = ?LIST_CTRL_CHILDREN,
     State = State0#state{zipper=Zipper},
     {noreply, update_gui(State)};
 handle_event(#wx{event = #wxSize{}}, State) ->
-    {noreply, adjust_list_cols(State)};
+    {noreply, update_report(adjust_size(State))};
 handle_event(#wx{event = #wxHtmlLink{linkInfo = #wxHtmlLinkInfo{href=Link}}},
-	     #state{stats_report_cfg=ReportCfg0, html_win_stats=HtmlWinStats,
-                    zipper=Zipper} = State) ->
+	     #state{stats_report_cfg=ReportCfg0} = State) ->
     ReportCfg = ds_reports:config_update(ReportCfg0, Link),
-    {Stats,_Ext} = ds_zipper:data(Zipper),
-    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
-    {noreply, State#state{stats_report_cfg=ReportCfg}};
+    {noreply, update_report(State#state{stats_report_cfg=ReportCfg})};
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
     {noreply, State}.
@@ -203,7 +200,6 @@ terminate(_Reason, _State) ->
 
 update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_children=TextChildren,
-                  html_win_stats=HtmlWinStats, stats_report_cfg=ReportCfg,
                   text_ext=TextExt,
                   zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
@@ -221,13 +217,19 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
     State1 = State0#state{is_generic_type=IsGenericType,
                           stack_col_widths = StWidths,
                           children_col_widths = ChWidths},
-    State = adjust_list_cols(State1),
+    State = update_report(adjust_size(State1)),
 
-    {Stats, Ext} = ds_zipper:data(Zipper),
-    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
+    {_Stats, Ext} = ds_zipper:data(Zipper),
     ExtStr = io_lib:format("~p", [Ext]),
     wxTextCtrl:setValue(TextExt, ExtStr),
 
+    State.
+
+update_report(#state{stats_report_cfg=ReportCfg,
+                     html_win_stats=HtmlWinStats,
+                     zipper=Zipper} = State) ->
+    {Stats,_Ext} = ds_zipper:data(Zipper),
+    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
     State.
 
 %% Enrich the stack items with parent refs for display purposes
@@ -286,11 +288,12 @@ delete_items_and_cols(LC) ->
     [wxListCtrl:deleteColumn(LC, Col) || Col <- lists:seq(NCols-1, 0, -1)],
     ok.
 
-adjust_list_cols(#state{panel_left=LeftPanel,
-                        lc_stack=LC_Stack, lc_children=LC_Children,
-                        is_generic_type=IsGenericType,
-                        stack_col_widths = StWidths0,
-                        children_col_widths = ChWidths0} = State) ->
+adjust_size(#state{panel_left=LeftPanel, panel_right=RightPanel,
+                   lc_stack=LC_Stack, lc_children=LC_Children,
+                   is_generic_type=IsGenericType,
+                   stack_col_widths = StWidths0,
+                   children_col_widths = ChWidths0,
+                   stats_report_cfg = ReportCfg0} = State) ->
     %% use the already measured "desired" widths to compute the actual
     %% widths and set them
     LastColW = get_last_col_width(StWidths0, ChWidths0),
@@ -298,8 +301,14 @@ adjust_list_cols(#state{panel_left=LeftPanel,
     StWidths = set_stack_cols_width(LC_Stack, StWidths0, W, LastColW),
     ChWidths = set_children_cols_width(LC_Children, ChWidths0, W, LastColW,
                                        IsGenericType),
+
+    %% Save the report area width in the report config
+    {ReportW,_ReportH} = wxWindow:getSize(RightPanel),
+    ReportCfg = ds_reports:config_store(report, {width, ReportW}, ReportCfg0),
+
     State#state{stack_col_widths = StWidths,
-                children_col_widths = ChWidths}.
+                children_col_widths = ChWidths,
+                stats_report_cfg = ReportCfg}.
 
 %% keep the last column width the same for both list widgets
 get_last_col_width(StWidths, []) -> lists:last(StWidths);
