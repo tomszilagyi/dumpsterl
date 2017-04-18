@@ -57,27 +57,6 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
                true  -> 6;
                false -> 2
            end,
-    RangeGraph =
-        case AttrCols of
-            true ->
-                %% FIXME RangeData contains duplicates if the extremes
-                %% are also present in samples!
-                %% FIXME RangeData should be sorted in the same order as the
-                %% frame data!
-                RangeData = extract_range_data(Pts ++ Samples),
-                {width, Width} = config_lookup(report, width, ReportCfg),
-                PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-25}],
-                                                            RangeData),
-                [{tr, [], [{td, [], [br]}]}, % vskip
-                 {tr, [],
-                  [{th, [{align, left}, {colspan, Cols}],
-                    [{font, [{size, "+1"}], [{str, "Value ranges"}]}]}]},
-                 {tr, [],
-                  [{td, [{align, left}, {colspan, Cols}],
-                    [{img, [{src, PngFile}], []}]}]}];
-            false ->
-                []
-        end,
     {table, [{width, "100%"}, {cellspacing, 0}],
      [{tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
@@ -88,19 +67,42 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
       {tr, [],
        [{th, [{align, left}, {colspan, Cols}],
          [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
-      samples_table(Samples, AttrCols, ReportCfg) ++ RangeGraph]}.
+      samples_table(Samples, AttrCols, ReportCfg),
+      range_graph(AttrCols, Cols, Pts, Samples, ReportCfg)]}.
 
 pt_table({Pt, Value, PVAttrs}, AttrCols, Cols, ReportCfg) ->
     Data = [value_row({Value, PVAttrs}, AttrCols)],
     [{tr, [], [{td, [], []}]},
      {tr, [{bgcolor, ?COLOR_PTHEAD}],
       [{th, [{align, left}, {colspan, Cols}],
-        [{term, Pt}]}]}
-     | frame(Pt, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg)].
+        [{term, Pt}]}]},
+     frame(Pt, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg)].
 
 samples_table(Values, AttrCols, ReportCfg) ->
     Data = [value_row(V, AttrCols) || V <- Values],
     frame(samples, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg).
+
+range_graph(false,_Cols,_Pts,_Samples,_ReportCfg) -> [];
+range_graph(true, Cols, Pts, Samples, ReportCfg) ->
+    AllSamples0 = Samples ++ [{Value, PVAttrs} || {_Pt, Value, PVAttrs} <- Pts],
+    AllSamples1 = [value_row(V, true) || V <- AllSamples0],
+    AllSamples = [Row || {_V,_C, MinTS,_MinK, MaxTS,_MaxK} = Row <- AllSamples1,
+                         MinTS /= undefined, MaxTS /= undefined],
+    Data0 = lists:usort(AllSamples),
+    %% Use the same sorting as selected for samples table:
+    Sort = config_lookup(samples, sort, ReportCfg),
+    Data = frame_data(Data0, Sort, fun(T) -> T end),
+
+    {width, Width} = config_lookup(report, width, ReportCfg),
+    PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-25}],
+                                                lists:reverse(Data)),
+    [{tr, [], [{td, [], [br]}]}, % vskip
+     {tr, [],
+      [{th, [{align, left}, {colspan, Cols}],
+        [{font, [{size, "+1"}], [{str, "Value ranges"}]}]}]},
+     {tr, [],
+      [{td, [{align, left}, {colspan, Cols}],
+        [{img, [{src, PngFile}], []}]}]}].
 
 value_row({Value, PVAttrs}, false) ->
     Count = ds_pvattrs:get_count(PVAttrs),
@@ -156,26 +158,6 @@ tk_attrs_present(PVAttrs, Rest) ->
         _ -> true
     end.
 
-%% Extract range data from tk_attrs
-%% Return a list of {Value, FirstTs, LastTs} tuples
-extract_range_data(Data) -> extract_range_data(Data, []).
-
-extract_range_data([], Acc) -> Acc;
-extract_range_data([{_Pt, Value, PVAttrs}|Rest], Acc) ->
-    case ds_pvattrs:get_timespan(PVAttrs) of
-        {{undefined,_}, {undefined,_}} ->
-            extract_range_data(Rest, Acc);
-        {{TsMin,_}, {TsMax,_}} ->
-            extract_range_data(Rest, [{Value, TsMin, TsMax}|Acc])
-    end;
-extract_range_data([{Value, PVAttrs}|Rest], Acc) ->
-    case ds_pvattrs:get_timespan(PVAttrs) of
-        {{undefined,_}, {undefined,_}} ->
-            extract_range_data(Rest, Acc);
-        {{TsMin,_}, {TsMax,_}} ->
-            extract_range_data(Rest, [{Value, TsMin, TsMax}|Acc])
-    end.
-
 %% A frame shows tabular data and allows the user to click on headers
 %% to sort the data according to a certain column.
 %% - Id: atom to identify this frame in ReportConfig
@@ -194,8 +176,7 @@ extract_range_data([{Value, PVAttrs}|Rest], Acc) ->
 %%     {Id, [{sort, ColNo, ascending|descending}]}
 frame(Id, Headers, Data0, DisplayFun, ReportCfg) ->
     Sort = config_lookup(Id, sort, ReportCfg),
-    Data1 = frame_sort(Data0, Sort),
-    Data = [DisplayFun(D) || D <- Data1],
+    Data = frame_data(Data0, Sort, DisplayFun),
     NDataRows = length(Data),
     HeaderRows = frame_headers(Id, Headers, Sort, NDataRows),
     [HeaderRows | stripe_rows([frame_data_row(D) || D <- Data])].
@@ -205,6 +186,11 @@ frame_sort(Data, {sort, N, Dir}) -> lists:sort(mk_sort_fun(N, Dir), Data).
 
 mk_sort_fun(N, ascending)  -> fun(T1, T2) -> element(N, T1) =< element(N, T2) end;
 mk_sort_fun(N, descending) -> fun(T1, T2) -> element(N, T1) >= element(N, T2) end.
+
+%% Prepare the raw data by sorting and converting via DisplayFun.
+frame_data(Data0, Sort, DisplayFun) ->
+    Data = frame_sort(Data0, Sort),
+    [DisplayFun(D) || D <- Data].
 
 frame_data_row(DataRow) ->
     {tr, [], [frame_data_cell(Field) || Field <- tuple_to_list(DataRow)]}.

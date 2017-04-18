@@ -19,14 +19,14 @@
 -define(EPOCH, 62167219200).
 
 %% Attrs is a list of attribute tuples of {Key, Value}.
-%% Data is a list of tuples {Value, FirstTs, LastTs}
+%% Data is a list of tuples {Value, Count, FirstTs, FirstKey, LastTs, LastKey}
 %% where Ts are timestamps in gregorian seconds.
 timestamp_range_graph(Attrs, Data) ->
     DataSeq = lists:zip(Data, lists:seq(1, length(Data))),
     Rows = [{T1-?EPOCH, Seq, T1-?EPOCH, T2-?EPOCH, V} ||
-               {{V, T1, T2}, Seq} <- DataSeq],
+               {{V,_C, T1,_K1, T2,_K2}, Seq} <- DataSeq],
     NRows = length(Rows),
-    YSize = 50 + 30*NRows,
+    YSize = 60 + 16*NRows,
     YMax = NRows + 1,
     %% TODO set Xtics format and interval based on data
     XticsFormat = "%Y",

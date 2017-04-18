@@ -301,7 +301,7 @@ see them in action.
   to external files
   - list of terms suitable to read with file:consult/1
   - binary via term_to_binary
-  - csv (maybe limited to cases wherer data is simple eg. integers?)
+  - csv (maybe limited to cases where data is simple eg. integers?)
 - say 'all' instead of count figure when same as super-type
   (this is not always meaningful, only for leaf nodes that are not
   generic types)
