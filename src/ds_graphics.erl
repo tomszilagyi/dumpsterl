@@ -8,6 +8,7 @@
 -export([ timestamp_range_graph/2
         , graph/3
         , merge_attrs/2
+        , gc_image_file/2
         ]).
 
 -ifdef(TEST).
@@ -54,7 +55,9 @@ timestamp_range_graph(Attrs, Data) ->
 %% unique filename under priv/. The full path to this file is
 %% returned.
 %%
-%% TODO the generated image files need to be garbage-collected.
+%% The generated image files need to be garbage-collected.
+%% The caller must either diplose of them manually via file:delete/1,
+%% or call gc_image_file below with a suitable interval argument.
 graph(Type, Attributes0, Data) ->
     graph(Type, Attributes0, Data, os:find_executable("gnuplot")).
 
@@ -103,7 +106,6 @@ format_line(Values) ->
 
 format_value(Value) -> lists:flatten(io_lib:format("~tp", [Value])).
 
-
 random_key() ->
     RandomKey = integer_to_list(erlang:phash2(make_ref(), 1 bsl 32)),
     Exists = filelib:is_file(filename:join(dir(), RandomKey ++ ".png")),
@@ -119,6 +121,17 @@ merge_attrs(Attrs, ExtraAttrs) ->
     lists:foldl(fun({Key,_V} = ExtraAttr, Acc) ->
                         lists:keystore(Key, 1, Acc, ExtraAttr)
                 end, Attrs, ExtraAttrs).
+
+%% Schedule the file Filename to be deleted after Delay milliseconds.
+%% The purpose of this is to allow the HTML widget to read and display
+%% the image, without having to manually revisit the file later.
+%% Call with Delay == 0 to immediately delete the file.
+gc_image_file(Filename, Delay) ->
+    spawn(fun() ->
+              receive after Delay ->
+                  file:delete(Filename)
+              end
+          end).
 
 %% Tests
 -ifdef(TEST).

@@ -22,6 +22,8 @@
 
 -define(HTML_LINEBRK, "<font color=\"" ?COLOR_LINEBRK "\">\\</font>\n").
 
+-define(IMAGE_GC_TIMEOUT, 5000).
+
 stats_page(Stats, ReportCfg) ->
     MainTable = main_table(Stats, ReportCfg),
     PtsTable = pts_samples_table(ds_stats:get_pts(Stats),
@@ -96,6 +98,7 @@ range_graph(true, Cols, Pts, Samples, ReportCfg) ->
     {width, Width} = config_lookup(report, width, ReportCfg),
     PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-25}],
                                                 lists:reverse(Data)),
+    ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
     [{tr, [], [{td, [], [br]}]}, % vskip
      {tr, [],
       [{th, [{align, left}, {colspan, Cols}],
