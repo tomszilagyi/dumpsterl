@@ -5,7 +5,7 @@
 %% HTML-based report generator
 
 %% Client API
--export([ stats_page/2
+-export([ report_page/2
         , config_update/2
         , config_store/3
         ]).
@@ -24,11 +24,13 @@
 
 -define(IMAGE_GC_TIMEOUT, 5000).
 
-stats_page(Stats, ReportCfg) ->
+report_page({Class, {Stats, Ext}}, ReportCfg) ->
     MainTable = main_table(Stats, ReportCfg),
-    PtsTable = pts_samples_table(ds_stats:get_pts(Stats),
-                                 ds_stats:get_samples(Stats),
-                                 ReportCfg),
+    Samples = case Class of
+                  atom -> Ext; % use exhaustive dict of values
+                  _    -> ds_stats:get_samples(Stats)
+              end,
+    PtsTable = pts_samples_table(ds_stats:get_pts(Stats), Samples, ReportCfg),
     Page = {html, [],
             [{head, [],
               [{meta, [{'http-equiv', "Content-Type"},
@@ -36,8 +38,10 @@ stats_page(Stats, ReportCfg) ->
              {body, [{link, ?COLOR_LINK},
                      {alink, ?COLOR_LINK},
                      {vlink, ?COLOR_LINK}],
-              [{font, [{size, "-1"}],
-                [MainTable, PtsTable]}]}]},
+              [{h3, [], [{str, ds_types:type_to_string(Class)}]},
+               {font, [{size, "-1"}],
+                [MainTable, PtsTable,
+                 report_ext(Class, Ext, ReportCfg)]}]}]},
     html(Page).
 
 main_table(Stats,_ReportCfg) ->
@@ -102,7 +106,7 @@ range_graph(true, Cols, Pts, Samples, ReportCfg) ->
     [{tr, [], [{td, [], [br]}]}, % vskip
      {tr, [],
       [{th, [{align, left}, {colspan, Cols}],
-        [{font, [{size, "+1"}], [{str, "Value ranges"}]}]}]},
+        [{font, [{size, "+1"}], [{str, "Timeline of sampled values"}]}]}]},
      {tr, [],
       [{td, [{align, left}, {colspan, Cols}],
         [{img, [{src, PngFile}], []}]}]}].
@@ -160,6 +164,25 @@ tk_attrs_present(PVAttrs, Rest) ->
             tk_attrs_present(Rest);
         _ -> true
     end.
+
+report_ext(_Class, [],_ReportCfg) -> [];
+report_ext(atom,_Ext,_ReportCfg) -> []; % used as Samples in the common report
+report_ext(binary, Ext, ReportCfg) -> report_ext(bitstring, Ext, ReportCfg);
+report_ext(bitstring, Ext, ReportCfg) ->
+    histogram("Bit size histogram", Ext, ReportCfg);
+report_ext(nonempty_list, Ext, ReportCfg) ->
+    histogram("List length histogram", Ext, ReportCfg);
+report_ext(_Class, Ext,_ReportCfg) ->
+    [{font, [{size, "+2"}], [br, {str, "Extended data (raw)"}, br, br]},
+     {term, Ext}].
+
+histogram(Title, Ext, ReportCfg) ->
+    {width, Width} = config_lookup(report, width, ReportCfg),
+    PngFile = ds_graphics:histogram_graph([{xsize, Width-36}], %% FIXME
+                                          Ext),
+    ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
+    [{font, [{size, "+2"}], [br, {str, Title}, br, br]},
+     {img, [{src, PngFile}], []}].
 
 %% A frame shows tabular data and allows the user to click on headers
 %% to sort the data according to a certain column.

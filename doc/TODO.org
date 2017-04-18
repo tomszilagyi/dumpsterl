@@ -269,6 +269,12 @@ see them in action.
   counts are always all identical to that of the complex type).
   Field is the field number and Attribute is the field name.
 
+*** TODO GUI outstanding tasks
+- timeline: implement heuristics for xtics format and interval based
+  on data
+- histogram:
+  - links to set binning on/off, ylog on/off
+  - link to show/hide underlying data as a table
 *** GUI toolbars
 **** at the top of spec window
 - show probe metadata
@@ -282,14 +288,11 @@ see them in action.
   e.g. if it turns out the ts is in gregorian seconds, allow
   user to set fun calendar:gregorian_seconds_to_datetime/1.
 *** Manage record attributes
-- GUI for displaying record attributes in Ext
+- button next to "Type parameters" if record
+- button opens "Record attributes" window
 - allow choosing another one (the first is used as a default)
 - allow manually adding/removing attributes (e.g. if none have been
   collected)
-*** GUI for Ext data:
-- size/length distribution histogram for lists, bitstrings and
-  binaries
-- dict of per-value stats for atoms
 *** TODO additional gui features
 - search: allow entering a piece of string, data, etc.
 - toolbar: load, save, generate report, exit, etc.

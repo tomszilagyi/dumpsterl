@@ -10,4 +10,3 @@ set xtics format $xtics_format $xtics_interval
 set yrange [$ymin:$ymax]
 set grid ytics
 plot $datafile using 1:2:3:4:ytic(5) with xerrorbars pt 0 lc "blue"
-

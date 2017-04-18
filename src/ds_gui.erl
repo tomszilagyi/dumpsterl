@@ -228,8 +228,10 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
 update_report(#state{stats_report_cfg=ReportCfg,
                      html_win_stats=HtmlWinStats,
                      zipper=Zipper} = State) ->
-    {Stats,_Ext} = ds_zipper:data(Zipper),
-    wxHtmlWindow:setPage(HtmlWinStats, ds_reports:stats_page(Stats, ReportCfg)),
+    Class = ds_zipper:class(Zipper),
+    Data = ds_zipper:data(Zipper),
+    wxHtmlWindow:setPage(HtmlWinStats,
+                         ds_reports:report_page({Class, Data}, ReportCfg)),
     State.
 
 %% Enrich the stack items with parent refs for display purposes

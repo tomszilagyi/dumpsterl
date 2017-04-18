@@ -5,7 +5,8 @@
 %% Graph generation facility
 
 %% Client API
--export([ timestamp_range_graph/2
+-export([ histogram_graph/2
+        , timestamp_range_graph/2
         , graph/3
         , merge_attrs/2
         , gc_image_file/2
@@ -20,11 +21,25 @@
 -define(EPOCH, 62167219200).
 
 %% Attrs is a list of attribute tuples of {Key, Value}.
+%% Data is a list of tuples {Value, Count}.
+histogram_graph(Attrs, Data) ->
+    Xvalues = [V || {V,_Cnt} <- Data],
+    Xmin = lists:min(Xvalues),
+    Xmax = lists:max(Xvalues) + 1,
+    MergedAttrs =
+        merge_attrs([{xsize, 750}, % override with real width in Attrs
+                     {ysize, 350},
+                     {xmin, Xmin},
+                     {xmax, Xmax}],
+                    Attrs),
+    graph(histogram, MergedAttrs, Data).
+
+%% Attrs is a list of attribute tuples of {Key, Value}.
 %% Data is a list of tuples {Value, Count, FirstTs, FirstKey, LastTs, LastKey}
 %% where Ts are timestamps in gregorian seconds.
 timestamp_range_graph(Attrs, Data) ->
     DataSeq = lists:zip(Data, lists:seq(1, length(Data))),
-    Rows = [{T1-?EPOCH, Seq, T1-?EPOCH, T2-?EPOCH, value_label(V)} ||
+    Rows = [{conv_ts(T1), Seq, conv_ts(T1), conv_ts(T2), value_label(V)} ||
                {{V,_C, T1,_K1, T2,_K2}, Seq} <- DataSeq],
     NRows = length(Rows),
     YSize = 60 + 16*NRows,
@@ -41,6 +56,10 @@ timestamp_range_graph(Attrs, Data) ->
                      {ymax, YMax}],
                     Attrs),
     graph(ranges, MergedAttrs, Rows).
+
+%% Convert standard timestamp (gregorian seconds) to the format
+%% expected by Gnuplot (seconds since Unix epoch).
+conv_ts(Ts) -> max(0, Ts - ?EPOCH).
 
 %% Graphs are generated via Gnuplot.
 %%
@@ -158,6 +177,19 @@ gc_image_file(Filename, Delay) ->
 
 %% Tests
 -ifdef(TEST).
+
+histogram_graph_test() ->
+         %% Value Count
+    Data = [{1,  168046}, {2,15308145}, {3, 7832820}, {4, 4108368},
+            {5, 2148978}, {6, 1898901}, {7, 1557822}, {8,  938278},
+            {9,  424736}, {10, 486730}, {11,  38853}, {12,  12340},
+            {13,   5446}, {14,   8357}, {15,   2578}, {16,   2098},
+            {17,   1030}, {18,   1312}, {19,    762}, {20,    878}],
+    try
+        PngFile = histogram_graph([], Data),
+        ok = file:delete(PngFile)
+    catch gnuplot_not_found -> ok
+    end.
 
 timestamp_range_graph_test() ->
          %% Value Count FirstTs      FirstKey   LastTs       LastKey

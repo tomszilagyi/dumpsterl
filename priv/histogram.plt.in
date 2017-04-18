@@ -1,0 +1,10 @@
+set terminal pngcairo size $xsize,$ysize enhanced font "Verdana,10"
+set termoption noenhanced
+set encoding utf8
+set output $pngfile
+set key off
+set offsets graph 0.05, 0.05, 0.05, 0.05
+set boxwidth 0.8 relative
+set style fill solid 1.0
+set xrange [$xmin:$xmax]
+plot $datafile with boxes lc "blue"
