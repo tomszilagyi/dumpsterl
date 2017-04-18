@@ -96,7 +96,7 @@ range_graph(true, Cols, Pts, Samples, ReportCfg) ->
     Data = frame_data(Data0, Sort, fun(T) -> T end),
 
     {width, Width} = config_lookup(report, width, ReportCfg),
-    PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-25}],
+    PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-36}], %% FIXME
                                                 lists:reverse(Data)),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
     [{tr, [], [{td, [], [br]}]}, % vskip

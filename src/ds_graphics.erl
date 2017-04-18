@@ -24,7 +24,7 @@
 %% where Ts are timestamps in gregorian seconds.
 timestamp_range_graph(Attrs, Data) ->
     DataSeq = lists:zip(Data, lists:seq(1, length(Data))),
-    Rows = [{T1-?EPOCH, Seq, T1-?EPOCH, T2-?EPOCH, V} ||
+    Rows = [{T1-?EPOCH, Seq, T1-?EPOCH, T2-?EPOCH, value_label(V)} ||
                {{V,_C, T1,_K1, T2,_K2}, Seq} <- DataSeq],
     NRows = length(Rows),
     YSize = 60 + 16*NRows,
@@ -57,7 +57,7 @@ timestamp_range_graph(Attrs, Data) ->
 %%
 %% The generated image files need to be garbage-collected.
 %% The caller must either diplose of them manually via file:delete/1,
-%% or call gc_image_file below with a suitable interval argument.
+%% or call gc_image_file/2 below with a suitable delay.
 graph(Type, Attributes0, Data) ->
     graph(Type, Attributes0, Data, os:find_executable("gnuplot")).
 
@@ -104,7 +104,30 @@ format_csv(Data) ->
 format_line(Values) ->
     string:join([format_value(V) || V <- tuple_to_list(Values)], ", ").
 
-format_value(Value) -> lists:flatten(io_lib:format("~tp", [Value])).
+format_value(Value) ->
+    lists:flatten(io_lib:format("~p", [Value])).
+
+%% Convert Value into a length-limited, ellipsized string
+%% suitable for use as a tic label.
+value_label(Value) when is_binary(Value) ->
+    value_label_filter(io_lib:format("~p", [Value]));
+value_label(Value) ->
+    Str = try io_lib:format("~s", [Value])
+          catch error:badarg -> io_lib:format("~p", [Value])
+          end,
+    value_label_filter(Str).
+
+%% Remove characters that cause problems within a Gnuplot data string
+value_label_filter(Str) ->
+    ellipsize(lists:filter(fun($") -> false;
+                              ($\n) -> false;
+                              (_)  -> true
+                           end, lists:flatten(Str))).
+
+ellipsize(Str) ->
+    if length(Str) > 23 -> string:substr(Str, 1, 20) ++ "...";
+       true -> Str
+    end.
 
 random_key() ->
     RandomKey = integer_to_list(erlang:phash2(make_ref(), 1 bsl 32)),
@@ -137,15 +160,11 @@ gc_image_file(Filename, Delay) ->
 -ifdef(TEST).
 
 timestamp_range_graph_test() ->
-    Data = [{"one value", 63341232447, 63657376337},
-            {"another value", 63649324800, 63649324800},
-            {3, 63649324800, 63649324800},
-            {"apple", 63297552721, 63657359744},
-            {"orange", 63297552721, 63657359744},
-            {"cat", 63297552721, 63657359744},
-            {5, 63642709095, 63650707200},
-            {6, 63642709095, 63650707200},
-            {7, 63645125869, 63656841600}],
+         %% Value Count FirstTs      FirstKey   LastTs       LastKey
+    Data = [{5,      3, 63604195833, 151047710, 63648171560, 393359950},
+            {6,   2941, 63332678758,      7147, 63657273600, 480595070},
+            {8,   1280, 63341232447,     12977, 63647078400, 379945090},
+            {19,  2150, 63297552721,        67, 63657273600, 480218350}],
     try
         PngFile = timestamp_range_graph([], Data),
         ok = file:delete(PngFile)
@@ -178,6 +197,18 @@ format_csv_test() ->
                  "5, 7, 63642709095, 63650707200\n"
                  "6, 2, 63645125869, 63656841600",
                  format_csv(Data)).
+
+value_label_test() ->
+    ?assertEqual("5", value_label(5)),
+    ?assertEqual("{data,123}", value_label({data, 123})),
+    ?assertEqual("[19,a,{b,555}]", value_label([19, a, {b, 555}])),
+    ?assertEqual("stringent", value_label("string\n\"ent\"")),
+    ?assertEqual("<<151,208,232,173>>", value_label(<<151,208,232,173>>)),
+    ?assertEqual("<<string-as-a-binary>>",
+                 value_label(<<"string-as-a-binary">>)),
+    ?assertEqual("{long,[1234567,abcde...",
+                 value_label({long, [1234567,"abcdefgh"]})),
+    ok.
 
 merge_attrs_test() ->
     ?assertEqual([{key, 123}], merge_attrs([], [{key, 123}])),
