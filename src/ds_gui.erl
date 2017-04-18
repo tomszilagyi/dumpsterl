@@ -35,7 +35,6 @@
         , text_children
         , html_win_stats
         , stats_report_cfg
-        , text_ext
         , zipper
         , is_generic_type
         , stack_col_widths
@@ -106,31 +105,12 @@ do_init([Server, Filename] = Config) ->
     wxSplitterWindow:setMinimumPaneSize(LeftSplitter, 1),
     wxSizer:add(LeftSizer, LeftSplitter, SizerOpts),
 
-    %% Right panel
     RightPanel = wxPanel:new(Splitter, []),
-    RightSplitter = wxSplitterWindow:new(RightPanel, []),
     RightSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(RightPanel, RightSizer),
-
-    TopRightPanel = wxPanel:new(RightSplitter, []),
-    TopRightSizer = wxBoxSizer:new(?wxVERTICAL),
-    wxPanel:setSizer(TopRightPanel, TopRightSizer),
-    HtmlWinStats = wxHtmlWindow:new(TopRightPanel, []),
+    HtmlWinStats = wxHtmlWindow:new(RightPanel, []),
     wxHtmlWindow:connect(HtmlWinStats, command_html_link_clicked, []),
-    wxSizer:add(TopRightSizer, HtmlWinStats, SizerOpts),
-
-    BottomRightPanel = wxPanel:new(RightSplitter, []),
-    BottomRightSizer = wxBoxSizer:new(?wxVERTICAL),
-    wxPanel:setSizer(BottomRightPanel, BottomRightSizer),
-    TextExt = wxTextCtrl:new(BottomRightPanel, ?wxID_ANY,
-                             [{value, "Extended data"},
-                              {style, ?wxDEFAULT bor ?wxTE_MULTILINE}]),
-    wxSizer:add(BottomRightSizer, TextExt, SizerOpts),
-
-    wxSplitterWindow:splitHorizontally(RightSplitter, TopRightPanel, BottomRightPanel),
-    wxSplitterWindow:setSashGravity(RightSplitter, 0.5),
-    wxSplitterWindow:setMinimumPaneSize(RightSplitter, 1),
-    wxSizer:add(RightSizer, RightSplitter, SizerOpts),
+    wxSizer:add(RightSizer, HtmlWinStats, SizerOpts),
 
     %% Main vertical splitter
     wxSplitterWindow:splitVertically(Splitter, LeftPanel, RightPanel),
@@ -144,7 +124,6 @@ do_init([Server, Filename] = Config) ->
                    lc_stack=LC_Stack, lc_children=LC_Children,
                    text_children=TextChildren,
                    html_win_stats=HtmlWinStats, stats_report_cfg=[],
-                   text_ext=TextExt,
                    zipper=Zipper},
     {Frame, update_gui(State)}.
 
@@ -199,9 +178,7 @@ terminate(_Reason, _State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
-                  text_children=TextChildren,
-                  text_ext=TextExt,
-                  zipper=Zipper} = State0) ->
+                  text_children=TextChildren, zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
     Stack0 = ds_zipper:stack(Zipper),
     Stack = stack_with_parent_refs(Stack0),
@@ -214,16 +191,10 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
     set_child_text(TextChildren, IsGenericType),
     setup_child_list_cols(LC_Children, IsGenericType),
     ChWidths = add_stack(LC_Children, child_stack(Zipper, IsGenericType)),
-    State1 = State0#state{is_generic_type=IsGenericType,
-                          stack_col_widths = StWidths,
-                          children_col_widths = ChWidths},
-    State = update_report(adjust_size(State1)),
-
-    {_Stats, Ext} = ds_zipper:data(Zipper),
-    ExtStr = io_lib:format("~p", [Ext]),
-    wxTextCtrl:setValue(TextExt, ExtStr),
-
-    State.
+    State = State0#state{is_generic_type=IsGenericType,
+                         stack_col_widths = StWidths,
+                         children_col_widths = ChWidths},
+    update_report(adjust_size(State)).
 
 update_report(#state{stats_report_cfg=ReportCfg,
                      html_win_stats=HtmlWinStats,
