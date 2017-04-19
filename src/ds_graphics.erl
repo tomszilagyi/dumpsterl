@@ -20,6 +20,8 @@
 %% Value: calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
 -define(EPOCH, 62167219200).
 
+-define(DEFAULT_XSIZE, 750).
+
 %% Attrs is a list of attribute tuples of {Key, Value}.
 %% Data is a list of tuples {Value, Count}.
 histogram_graph(Attrs, Data) ->
@@ -27,35 +29,88 @@ histogram_graph(Attrs, Data) ->
     Xmin = lists:min(Xvalues),
     Xmax = lists:max(Xvalues) + 1,
     MergedAttrs =
-        merge_attrs([{xsize, 750}, % override with real width in Attrs
+        merge_attrs([{xsize, ?DEFAULT_XSIZE}, % override this from Attrs
                      {ysize, 350},
                      {xmin, Xmin},
                      {xmax, Xmax}],
                     Attrs),
     graph(histogram, MergedAttrs, Data).
 
-%% Attrs is a list of attribute tuples of {Key, Value}.
+%% Attrs0 is a list of attribute tuples of {Key, Value}.
 %% Data is a list of tuples {Value, Count, FirstTs, FirstKey, LastTs, LastKey}
-%% where Ts are timestamps in gregorian seconds.
-timestamp_range_graph(Attrs, Data) ->
+%% where *Ts are timestamps in gregorian seconds.
+timestamp_range_graph(Attrs0, Data) ->
     DataSeq = lists:zip(Data, lists:seq(1, length(Data))),
     Rows = [{conv_ts(T1), Seq, conv_ts(T1), conv_ts(T2), value_label(V)} ||
                {{V,_C, T1,_K1, T2,_K2}, Seq} <- DataSeq],
+    TsMin = lists:min([element(3, R) || R <- Rows]),
+    TsMax = lists:max([element(4, R) || R <- Rows]),
     NRows = length(Rows),
-    YSize = 60 + 16*NRows,
+    YSize = 60 + 16*NRows, % manually tuned based on gnuplot output
     YMax = NRows + 1,
-    %% TODO set Xtics format and interval based on data
-    XticsFormat = "%Y",
-    XticsInterval = calendar:datetime_to_gregorian_seconds({{2,1,1},{0,0,0}}),
-    MergedAttrs =
-        merge_attrs([{xsize, 750}, % override with real width in Attrs
-                     {ysize, YSize},
-                     {xtics_format, XticsFormat},
-                     {xtics_interval, XticsInterval},
-                     {ymin, 0},
-                     {ymax, YMax}],
-                    Attrs),
-    graph(ranges, MergedAttrs, Rows).
+    Attrs1 = merge_attrs([{xsize, ?DEFAULT_XSIZE}, % override this from Attrs0
+                          {ysize, YSize},
+                          {ymin, 0},
+                          {ymax, YMax}],
+                         Attrs0),
+    Attrs = auto_xtics(TsMin, TsMax, Attrs1),
+    graph(ranges, Attrs, Rows).
+
+%% Calculate appropriate xtics attributes for x-axis showing time.
+%% Returns Attrs with added attributes 'xtics_format' and 'xtics_interval'.
+auto_xtics(TsMin, TsMax, Attrs) ->
+    XSize = proplists:get_value(xsize, Attrs, ?DEFAULT_XSIZE),
+    TimeSpan = TsMax - TsMin,
+    MinTicWidth = 150, % manually tuned based on gnuplot output
+    MinSecondsPerTic = max(1, TimeSpan * MinTicWidth div XSize),
+    {XticsInterval, XticsFormat} = xtics_choose_range(MinSecondsPerTic),
+    merge_attrs([{xtics_format, XticsFormat},
+                 {xtics_interval, XticsInterval}], Attrs).
+
+%% Choose the smallest tic interval and associated label format
+%% from xtics_range_table that accomodates our actual x-axis density
+xtics_choose_range(SecondsPerTic) ->
+    xtics_choose_range(SecondsPerTic, xtics_range_table()).
+
+xtics_choose_range(SecondsPerTic, [{Limit,_Format}=RangeSpec|_Rest])
+  when SecondsPerTic >= Limit -> RangeSpec;
+xtics_choose_range(SecondsPerTic, [_RangeSpec|Rest]) ->
+    xtics_choose_range(SecondsPerTic, Rest).
+
+xtics_range_table() ->
+    %% xtics interval    format         one tic label per every...
+    [ {86400 * 365 * 50, "%Y"}          % 50 years
+    , {86400 * 365 * 30, "%Y"}          % 30 years
+    , {86400 * 365 * 20, "%Y"}          % 20 years
+    , {86400 * 365 * 10, "%Y"}          % 10 years
+    , {86400 * 365 * 5,  "%Y"}          %  5 years
+    , {86400 * 365 * 3,  "%Y"}          %  3 years
+    , {86400 * 365 * 2,  "%Y"}          %  2 years
+    , {86400 * 365,      "%Y"}          %  1 year
+    , {86400 * 182,      "%Y/%m"}       %  6 months
+    , {86400 * 30 * 3,   "%Y/%m"}       % 90 days
+    , {86400 * 30 * 2,   "%Y/%m"}       % 60 days
+    , {86400 * 30,       "%Y/%m"}       % 30 days
+    , {86400 * 15,       "%Y/%m/%d"}    % 15 days
+    , {86400 * 10,       "%Y/%m/%d"}    % 10 days
+    , {86400 * 5,        "%Y/%m/%d"}    %  5 days
+    , {86400 * 3,        "%Y/%m/%d"}    %  3 days
+    , {86400 * 2,        "%Y/%m/%d"}    %  2 days
+    , {86400,            "%Y/%m/%d"}    %  1 day
+    , {43200,            "%m/%d %H'"}   % 12 hours
+    , {21600,            "%m/%d %H'"}   %  6 hours
+    , {10800,            "%m/%d %H'"}   %  3 hours
+    , { 7200,            "%d. %H:%M"}   %  2 hours
+    , { 3600,            "%d. %H:%M"}   %  1 hour
+    , { 1800,            "%d. %H:%M"}   % 30 minutes
+    , { 1200,            "%d. %H:%M"}   % 20 minutes
+    , {  600,            "%d. %H:%M"}   % 10 minutes
+    , {  300,            "%d. %H:%M"}   %  5 minutes
+    , {  180,            "%d. %H:%M"}   %  3 minutes
+    , {  120,            "%d. %H:%M"}   %  2 minutes
+    , {   60,            "%d. %H:%M"}   %  1 minute
+    , {    0,            "%M:%S"}       %  catch-all
+    ].
 
 %% Convert standard timestamp (gregorian seconds) to the format
 %% expected by Gnuplot (seconds since Unix epoch).
@@ -67,7 +122,7 @@ conv_ts(Ts) -> max(0, Ts - ?EPOCH).
 %%
 %% The actual Gnuplot .plt file is generated from this template,
 %% substituting the attribute variables supplied in Attributes plus
-%% standard attributes $datafile, $pngfile for input and output.
+%% standard attributes $datafile and $pngfile for input and output.
 %%
 %% Finally, the tabular data (list of tuples) in Data is plot via
 %% Gnuplot using the .plt file, to a file with an auto-generated
@@ -76,7 +131,7 @@ conv_ts(Ts) -> max(0, Ts - ?EPOCH).
 %%
 %% The generated image files need to be garbage-collected.
 %% The caller must either diplose of them manually via file:delete/1,
-%% or call gc_image_file/2 below with a suitable delay.
+%% or call gc_image_file/2 with a suitable delay.
 graph(Type, Attributes0, Data) ->
     graph(Type, Attributes0, Data, os:find_executable("gnuplot")).
 

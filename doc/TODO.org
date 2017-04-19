@@ -270,8 +270,6 @@ see them in action.
   Field is the field number and Attribute is the field name.
 
 *** TODO GUI outstanding tasks
-- timeline: implement heuristics for xtics format and interval based
-  on data
 - histogram:
   - links to set binning on/off, ylog on/off
   - link to show/hide underlying data as a table
