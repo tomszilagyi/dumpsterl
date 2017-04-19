@@ -31,10 +31,12 @@
         , panel_left
         , panel_right
         , lc_stack
+        , lc_stack_size
         , lc_children
         , text_children
-        , html_win_stats
-        , stats_report_cfg
+        , report_html_win
+        , report_cfg
+        , report_scroll_pos
         , zipper
         , is_generic_type
         , stack_col_widths
@@ -108,9 +110,14 @@ do_init([Server, Filename] = Config) ->
     RightPanel = wxPanel:new(Splitter, []),
     RightSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(RightPanel, RightSizer),
-    HtmlWinStats = wxHtmlWindow:new(RightPanel, []),
-    wxHtmlWindow:connect(HtmlWinStats, command_html_link_clicked, []),
-    wxSizer:add(RightSizer, HtmlWinStats, SizerOpts),
+    ReportHtmlWin = wxHtmlWindow:new(RightPanel, []),
+    wxHtmlWindow:connect(ReportHtmlWin, command_html_link_clicked, []),
+    [wxHtmlWindow:connect(ReportHtmlWin, Event, [{skip, true}]) ||
+        Event <- [scrollwin_top, scrollwin_bottom,
+                  scrollwin_lineup, scrollwin_linedown,
+                  scrollwin_pageup, scrollwin_pagedown,
+                  scrollwin_thumbtrack, scrollwin_thumbrelease]],
+    wxSizer:add(RightSizer, ReportHtmlWin, SizerOpts),
 
     %% Main vertical splitter
     wxSplitterWindow:splitVertically(Splitter, LeftPanel, RightPanel),
@@ -123,7 +130,8 @@ do_init([Server, Filename] = Config) ->
                    panel_left=LeftPanel, panel_right=RightPanel,
                    lc_stack=LC_Stack, lc_children=LC_Children,
                    text_children=TextChildren,
-                   html_win_stats=HtmlWinStats, stats_report_cfg=[],
+                   report_html_win=ReportHtmlWin,
+                   report_scroll_pos={0,0}, report_cfg=[],
                    zipper=Zipper},
     {Frame, update_gui(State)}.
 
@@ -134,20 +142,26 @@ handle_event(#wx{id = ?LIST_CTRL_STACK, obj = LC,
              State0 = #state{zipper=Zipper0}) ->
     FramesUp = wxListCtrl:getItemCount(LC) - Item - 1,
     Zipper = ds_zipper:nth_parent(Zipper0, FramesUp),
-    State = State0#state{zipper=Zipper},
+    State = State0#state{zipper=Zipper, report_scroll_pos={0,0}},
     {noreply, update_gui(State)};
 handle_event(#wx{id = ?LIST_CTRL_CHILDREN,
                  event = #wxList{itemIndex = Item}},
              State0 = #state{zipper=Zipper0}) ->
     Zipper = ds_zipper:nth_child(Zipper0, Item),
-    State = State0#state{zipper=Zipper},
+    State = State0#state{zipper=Zipper, report_scroll_pos={0,0}},
     {noreply, update_gui(State)};
-handle_event(#wx{event = #wxSize{}}, State) ->
-    {noreply, update_report(adjust_size(State))};
+handle_event(#wx{event = #wxSize{size=Size}}, #state{lc_stack_size=Size}=State) ->
+    {noreply, State};
+handle_event(#wx{event = #wxSize{size=Size}}, State) ->
+    {noreply, update_report(adjust_size(State#state{lc_stack_size=Size}))};
 handle_event(#wx{event = #wxHtmlLink{linkInfo = #wxHtmlLinkInfo{href=Link}}},
-	     #state{stats_report_cfg=ReportCfg0} = State) ->
+	     #state{report_cfg=ReportCfg0} = State) ->
     ReportCfg = ds_reports:config_update(ReportCfg0, Link),
-    {noreply, update_report(State#state{stats_report_cfg=ReportCfg})};
+    {noreply, update_report(State#state{report_cfg=ReportCfg})};
+handle_event(#wx{event = #wxScrollWin{}},
+	     #state{report_html_win=ReportHtmlWin} = State) ->
+    ScrollPos = wxScrolledWindow:getViewStart(ReportHtmlWin),
+    {noreply, State#state{report_scroll_pos=ScrollPos}};
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
     {noreply, State}.
@@ -196,14 +210,19 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                          children_col_widths = ChWidths},
     update_report(adjust_size(State)).
 
-update_report(#state{stats_report_cfg=ReportCfg,
-                     html_win_stats=HtmlWinStats,
+update_report(#state{report_cfg=ReportCfg,
+                     report_html_win=ReportHtmlWin,
+                     report_scroll_pos=ScrollPos,
                      zipper=Zipper} = State) ->
     Class = ds_zipper:class(Zipper),
     Data = ds_zipper:data(Zipper),
-    wxHtmlWindow:setPage(HtmlWinStats,
-                         ds_reports:report_page({Class, Data}, ReportCfg)),
+    Page = ds_reports:report_page({Class, Data}, ReportCfg),
+    wxHtmlWindow:setPage(ReportHtmlWin, Page),
+    scrolled_win_set_pos(ReportHtmlWin, ScrollPos),
     State.
+
+scrolled_win_set_pos(Win, {Px, Py}) ->
+    wxScrolledWindow:scroll(Win, Px, Py).
 
 %% Enrich the stack items with parent refs for display purposes
 stack_with_parent_refs(Stack) ->
@@ -266,7 +285,9 @@ adjust_size(#state{panel_left=LeftPanel, panel_right=RightPanel,
                    is_generic_type=IsGenericType,
                    stack_col_widths = StWidths0,
                    children_col_widths = ChWidths0,
-                   stats_report_cfg = ReportCfg0} = State) ->
+                   report_html_win = ReportHtmlWin,
+                   report_scroll_pos = ReportScrollPos,
+                   report_cfg = ReportCfg0} = State) ->
     %% use the already measured "desired" widths to compute the actual
     %% widths and set them
     LastColW = get_last_col_width(StWidths0, ChWidths0),
@@ -278,10 +299,11 @@ adjust_size(#state{panel_left=LeftPanel, panel_right=RightPanel,
     %% Save the report area width in the report config
     {ReportW,_ReportH} = wxWindow:getSize(RightPanel),
     ReportCfg = ds_reports:config_store(report, {width, ReportW}, ReportCfg0),
+    scrolled_win_set_pos(ReportHtmlWin, ReportScrollPos),
 
     State#state{stack_col_widths = StWidths,
                 children_col_widths = ChWidths,
-                stats_report_cfg = ReportCfg}.
+                report_cfg = ReportCfg}.
 
 %% keep the last column width the same for both list widgets
 get_last_col_width(StWidths, []) -> lists:last(StWidths);
