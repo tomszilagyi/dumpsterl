@@ -169,20 +169,44 @@ report_ext(_Class, [],_ReportCfg) -> [];
 report_ext(atom,_Ext,_ReportCfg) -> []; % used as Samples in the common report
 report_ext(binary, Ext, ReportCfg) -> report_ext(bitstring, Ext, ReportCfg);
 report_ext(bitstring, Ext, ReportCfg) ->
-    histogram("Bit size histogram", Ext, ReportCfg);
+    histogram(size_dist, "Bit size histogram", Ext, ReportCfg);
 report_ext(nonempty_list, Ext, ReportCfg) ->
-    histogram("List length histogram", Ext, ReportCfg);
+    histogram(length_dist, "List length histogram", Ext, ReportCfg);
 report_ext(_Class, Ext,_ReportCfg) ->
     [{font, [{size, "+2"}], [br, {str, "Extended data (raw)"}, br, br]},
      {term, Ext}].
 
-histogram(Title, Ext, ReportCfg) ->
+histogram(Id, Title, Ext, ReportCfg) ->
+    {show_table, ShowTable} = config_lookup(Id, show_table, ReportCfg),
     {width, Width} = config_lookup(report, width, ReportCfg),
     PngFile = ds_graphics:histogram_graph([{xsize, Width-36}], %% FIXME
                                           Ext),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
-    [{font, [{size, "+2"}], [br, {str, Title}, br, br]},
-     {img, [{src, PngFile}], []}].
+    Link = config_link(Id, show_table, not ShowTable),
+    LinkText = case ShowTable of
+                   true  -> "[Hide table]";
+                   false -> "[Show table]"
+               end,
+    [{table, [{width, "100%"},
+              {cellspacing, 0}],
+     [{tr, [], [{td, [], [br]}]}, % vskip
+      {tr, [],
+       [{th, [{align, left}],
+         [{font, [{size, "+1"}], [{str, Title}]}]}]},
+      {tr, [{bgcolor, ?COLOR_PTHEAD}],
+       [{th, [{align, left}],
+         [{a, [{href, Link}], [{str, LinkText}]}]}]},
+      {tr, [],
+       [{td, [],
+         [{img, [{src, PngFile}], []}]}]},
+      {tr, [],
+       [{td, [],
+         [{table, [{cellspacing, 0}],
+           histogram_data_table(ShowTable, Id, Ext, ReportCfg)}]}]}]}].
+
+histogram_data_table(false,_Id,_Data,_ReportCfg) -> [];
+histogram_data_table(true, Id, Data, ReportCfg) ->
+    frame(Id, stats_headers(false), Data, fun stats_display_f/1, ReportCfg).
 
 %% A frame shows tabular data and allows the user to click on headers
 %% to sort the data according to a certain column.
@@ -240,7 +264,7 @@ frame_header(Id, HeaderSpec0, Sort, EnableSortLinks) ->
       || {HeaderCell, N} <- HeaderSpec]}.
 
 frame_header_cell(Id, {Caption, AttrList}, N, Sort, true) ->
-    Link = lists:concat([Id, ".", N]),
+    Link = config_link(Id, sort, N),
     SortCaption = frame_header_caption(Caption, N, Sort),
     {th, AttrList, [{a, [{href, Link}], [{str, SortCaption}]}]};
 frame_header_cell(_Id, {Caption, AttrList},_N,_Sort, false) ->
@@ -267,18 +291,28 @@ stripe_rows([Row|Rest], Acc, false) ->
 %% Report config
 %%
 %% A key-value list [{Id, Cfg}] where Id is a frame identifier
-%% and Cfg is a further tuple list. Currently this is only used
-%% to store a single type of tuple, {sort, ColN, Dir} to specify
-%% the currently selected sort on the frame.
+%% and Cfg is a further tuple list where tuple size may vary.
+%% Currently the following tuple types are used for Cfg:
+%% - {sort, ColN, Dir} to specify the currently selected sort on
+%%      the frame;
+%% - {show_table, boolean()} to specify whether a table with the
+%%      raw data underlying the graph should be shown.
 config_update(ReportCfg, Link) ->
-    [IdStr, ColStr] = string:tokens(Link, "."),
+    [IdStr, KeyStr | ArgsStrL] = string:tokens(Link, "."),
     Id = list_to_atom(IdStr),
+    Key = list_to_atom(KeyStr),
+    OldSetting = config_lookup(Id, Key, ReportCfg),
+    NewSetting = config_update(Key, OldSetting, ArgsStrL),
+    config_store(Id, NewSetting, ReportCfg).
+
+config_update(show_table, _OldSetting, [BooleanStr]) ->
+    {show_table, list_to_atom(BooleanStr)};
+config_update(sort, OldSetting, [ColStr]) ->
     ColN = list_to_integer(ColStr),
-    Sort = case config_lookup(Id, sort, ReportCfg) of
-               {sort, ColN, Dir} -> {sort, ColN, invert_dir(Dir)};
-               _                 -> {sort, ColN, ascending}
-           end,
-    config_store(Id, Sort, ReportCfg).
+    case OldSetting of
+        {sort, ColN, Dir} -> {sort, ColN, invert_dir(Dir)};
+        _                 -> {sort, ColN, ascending}
+    end.
 
 config_store(Id, CfgTuple, ReportCfg) ->
     Cfg = case lists:keyfind(Id, 1, ReportCfg) of
@@ -291,9 +325,24 @@ config_store(Id, CfgTuple, ReportCfg) ->
 
 config_lookup(Id, Key, ReportCfg) ->
     case lists:keyfind(Id, 1, ReportCfg) of
-        false     -> false;
-        {Id, Cfg} -> lists:keyfind(Key, 1, Cfg)
+        false     -> lists:keyfind(Key, 1, config_defaults());
+        {Id, Cfg} ->
+            case lists:keyfind(Key, 1, Cfg) of
+                false    -> lists:keyfind(Key, 1, config_defaults());
+                CfgTuple -> CfgTuple
+            end
     end.
+
+%% Generate a link that will trigger appropriate config update actions
+%% in config_update above.
+config_link(Id, Key, Data) ->
+    lists:concat([Id, ".", Key, ".", Data]).
+
+%% Default settings for ReportCfg keys to use in case they are missing.
+config_defaults() ->
+    [ {sort, 1, ascending}
+    , {show_table, false}
+    ].
 
 invert_dir(ascending) -> descending;
 invert_dir(descending) -> ascending.
@@ -370,8 +419,10 @@ nl_encode([H|T], Acc) -> nl_encode(T, [H|Acc]).
 -ifdef(TEST).
 
 config_lookup_test() ->
-    ?assertEqual(false, config_lookup(myframeid, sort, [])),
-    ?assertEqual(false, config_lookup(myframeid, sort, [{myframeid, []}])),
+    ?assertEqual({sort, 1, ascending}, % default picked due to missing id
+                 config_lookup(myframeid, sort, [])),
+    ?assertEqual({sort, 1, ascending}, % default picked due to missing key for id
+                 config_lookup(myframeid, sort, [{myframeid, []}])),
     ?assertEqual({sort, 3, ascending},
                  config_lookup(myframeid, sort,
                                [{myframeid, [{sort, 3, ascending}]}])).
@@ -389,16 +440,22 @@ config_store_test() ->
                                {myframeid, [{sort, 1, ascending}]}])).
 
 config_update_test() ->
-    ?assertEqual([{myframeid, [{sort, 1, ascending}]}],
-                 config_update([], "myframeid.1")),
     ?assertEqual([{myframeid, [{sort, 1, descending}]}],
-                 config_update([{myframeid, [{sort, 1, ascending}]}],
-                               "myframeid.1")),
+                 config_update([], config_link(myframeid, sort, 1))),
+    ?assertEqual([{myframeid, [{sort, 1, ascending}]}],
+                 config_update([{myframeid, [{sort, 1, descending}]}],
+                               config_link(myframeid, sort, 1))),
     ?assertEqual([{otherframeid, [{dummy, 123}]},
                   {myframeid, [{sort, 3, ascending}]}],
                  config_update([{otherframeid, [{dummy, 123}]},
                                 {myframeid, [{sort, 1, ascending}]}],
-                               "myframeid.3")).
+                               config_link(myframeid, sort, 3))),
+
+    ?assertEqual([{myframeid, [{show_table, true}]}],
+                 config_update([], config_link(myframeid, show_table, true))),
+    ?assertEqual([{myframeid, [{show_table, false}]}],
+                 config_update([{myframeid, [{show_table, true}]}],
+                               config_link(myframeid, show_table, false))).
 
 linewrap_test() ->
     ?assertEqual("abcdefghij" ++ ?HTML_LINEBRK ++
