@@ -63,18 +63,19 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
                true  -> 6;
                false -> 2
            end,
-    {table, [{width, "100%"}, {cellspacing, 0}],
-     [{tr, [], [{td, [], [br]}]}, % vskip
-      {tr, [],
-       [{th, [{align, left}, {colspan, Cols}],
-         [{font, [{size, "+1"}], [{str, "Extremes"}]}]}]},
-      [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
-      {tr, [], [{td, [], [br]}]}, % vskip
-      {tr, [],
-       [{th, [{align, left}, {colspan, Cols}],
-         [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
-      samples_table(Samples, AttrCols, ReportCfg),
-      range_graph(AttrCols, Cols, Pts, Samples, ReportCfg)]}.
+    [{table, [{width, "100%"}, {cellspacing, 0}],
+      [{tr, [], [{td, [], [br]}]}, % vskip
+       {tr, [],
+        [{th, [{align, left}, {colspan, Cols}],
+          [{font, [{size, "+1"}], [{str, "Extremes"}]}]}]},
+       [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
+       {tr, [], [{td, [], [br]}]}, % vskip
+       {tr, [],
+        [{th, [{align, left}, {colspan, Cols}],
+          [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
+       samples_table(Samples, AttrCols, ReportCfg)]},
+     {table, [{width, "100%"}, {cellspacing, 0}],
+      range_graph(AttrCols, Pts, Samples, ReportCfg)}].
 
 pt_table({Pt, Value, PVAttrs}, AttrCols, Cols, ReportCfg) ->
     Data = [value_row({Value, PVAttrs}, AttrCols)],
@@ -88,8 +89,8 @@ samples_table(Values, AttrCols, ReportCfg) ->
     Data = [value_row(V, AttrCols) || V <- Values],
     frame(samples, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg).
 
-range_graph(false,_Cols,_Pts,_Samples,_ReportCfg) -> [];
-range_graph(true, Cols, Pts, Samples, ReportCfg) ->
+range_graph(false,_Pts,_Samples,_ReportCfg) -> [];
+range_graph(true, Pts, Samples, ReportCfg) ->
     AllSamples0 = Samples ++ [{Value, PVAttrs} || {_Pt, Value, PVAttrs} <- Pts],
     AllSamples1 = [value_row(V, true) || V <- AllSamples0],
     AllSamples = [Row || {_V,_C, MinTS,_MinK, MaxTS,_MaxK} = Row <- AllSamples1,
@@ -100,15 +101,15 @@ range_graph(true, Cols, Pts, Samples, ReportCfg) ->
     Data = frame_data(Data0, Sort, fun(T) -> T end),
 
     {width, Width} = config_lookup(report, width, ReportCfg),
-    PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-36}], %% FIXME
+    PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-40}], %% FIXME
                                                 lists:reverse(Data)),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
     [{tr, [], [{td, [], [br]}]}, % vskip
      {tr, [],
-      [{th, [{align, left}, {colspan, Cols}],
+      [{th, [{align, left}],
         [{font, [{size, "+1"}], [{str, "Timeline of sampled values"}]}]}]},
      {tr, [],
-      [{td, [{align, left}, {colspan, Cols}],
+      [{td, [{align, left}],
         [{img, [{src, PngFile}], []}]}]}].
 
 value_row({Value, PVAttrs}, false) ->
@@ -176,19 +177,18 @@ report_ext(_Class, Ext,_ReportCfg) ->
     [{font, [{size, "+2"}], [br, {str, "Extended data (raw)"}, br, br]},
      {term, Ext}].
 
-histogram(Id, Title, Ext, ReportCfg) ->
+histogram(Id, Title, Data, ReportCfg) ->
     {show_table, ShowTable} = config_lookup(Id, show_table, ReportCfg),
     {width, Width} = config_lookup(report, width, ReportCfg),
-    PngFile = ds_graphics:histogram_graph([{xsize, Width-36}], %% FIXME
-                                          Ext),
+    PngFile = ds_graphics:histogram_graph([{xsize, Width-40}], %% FIXME
+                                          Data),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
     Link = config_link(Id, show_table, not ShowTable),
     LinkText = case ShowTable of
                    true  -> "[Hide table]";
                    false -> "[Show table]"
                end,
-    [{table, [{width, "100%"},
-              {cellspacing, 0}],
+    [{table, [{width, "100%"}, {cellspacing, 0}],
      [{tr, [], [{td, [], [br]}]}, % vskip
       {tr, [],
        [{th, [{align, left}],
@@ -202,7 +202,7 @@ histogram(Id, Title, Ext, ReportCfg) ->
       {tr, [],
        [{td, [],
          [{table, [{cellspacing, 0}],
-           histogram_data_table(ShowTable, Id, Ext, ReportCfg)}]}]}]}].
+           histogram_data_table(ShowTable, Id, Data, ReportCfg)}]}]}]}].
 
 histogram_data_table(false,_Id,_Data,_ReportCfg) -> [];
 histogram_data_table(true, Id, Data, ReportCfg) ->
