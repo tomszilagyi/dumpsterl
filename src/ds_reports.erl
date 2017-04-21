@@ -64,15 +64,9 @@ pts_samples_table(Pts, Samples, ReportCfg) ->
                false -> 2
            end,
     [{table, [{width, "100%"}, {cellspacing, 0}],
-      [{tr, [], [{td, [], [br]}]}, % vskip
-       {tr, [],
-        [{th, [{align, left}, {colspan, Cols}],
-          [{font, [{size, "+1"}], [{str, "Extremes"}]}]}]},
+      [table_section("Extremes"),
        [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
-       {tr, [], [{td, [], [br]}]}, % vskip
-       {tr, [],
-        [{th, [{align, left}, {colspan, Cols}],
-          [{font, [{size, "+1"}], [{str, "Samples"}]}]}]},
+       table_section("Samples"),
        samples_table(Samples, AttrCols, ReportCfg)]},
      {table, [{width, "100%"}, {cellspacing, 0}],
       range_graph(AttrCols, Pts, Samples, ReportCfg)}].
@@ -104,10 +98,7 @@ range_graph(true, Pts, Samples, ReportCfg) ->
     PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-40}], %% FIXME
                                                 lists:reverse(Data)),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
-    [{tr, [], [{td, [], [br]}]}, % vskip
-     {tr, [],
-      [{th, [{align, left}],
-        [{font, [{size, "+1"}], [{str, "Timeline of sampled values"}]}]}]},
+    [table_section("Timeline of sampled values"),
      {tr, [],
       [{td, [{align, left}],
         [{img, [{src, PngFile}], []}]}]}].
@@ -179,34 +170,50 @@ report_ext(_Class, Ext,_ReportCfg) ->
 
 histogram(Id, Title, Data, ReportCfg) ->
     {show_table, ShowTable} = config_lookup(Id, show_table, ReportCfg),
+    ShowTableLink = config_link(Id, show_table, not ShowTable),
+    ShowTableLinkText = case ShowTable of
+                            true  -> "[Hide table]";
+                            false -> "[Show table]"
+                        end,
+    {logscale_y, LogScaleY} = config_lookup(Id, logscale_y, ReportCfg),
+    LogScaleYLink = config_link(Id, logscale_y, not LogScaleY),
+    LogScaleYLinkText = case LogScaleY of
+                            true  -> "[Lin Y]";
+                            false -> "[Log Y]"
+                        end,
+    LogScaleYAttr = case LogScaleY of
+                        true  -> set;
+                        false -> unset
+                    end,
     {width, Width} = config_lookup(report, width, ReportCfg),
-    PngFile = ds_graphics:histogram_graph([{xsize, Width-40}], %% FIXME
+    PngFile = ds_graphics:histogram_graph([{set_logscale_y, LogScaleYAttr},
+                                           {xsize, Width-40}], %% FIXME
                                           Data),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
-    Link = config_link(Id, show_table, not ShowTable),
-    LinkText = case ShowTable of
-                   true  -> "[Hide table]";
-                   false -> "[Show table]"
-               end,
     [{table, [{width, "100%"}, {cellspacing, 0}],
-     [{tr, [], [{td, [], [br]}]}, % vskip
-      {tr, [],
-       [{th, [{align, left}],
-         [{font, [{size, "+1"}], [{str, Title}]}]}]},
-      {tr, [{bgcolor, ?COLOR_PTHEAD}],
-       [{th, [{align, left}],
-         [{a, [{href, Link}], [{str, LinkText}]}]}]},
-      {tr, [],
-       [{td, [],
-         [{img, [{src, PngFile}], []}]}]},
-      {tr, [],
-       [{td, [],
-         [{table, [{cellspacing, 0}],
-           histogram_data_table(ShowTable, Id, Data, ReportCfg)}]}]}]}].
+      [table_section(Title),
+       {tr, [{bgcolor, ?COLOR_PTHEAD}],
+        [{th, [{align, left}],
+          [{a, [{href, ShowTableLink}], [{str, ShowTableLinkText}]},
+           {str, " "},
+           {a, [{href, LogScaleYLink}], [{str, LogScaleYLinkText}]}]}]},
+       {tr, [],
+        [{td, [],
+          [{img, [{src, PngFile}], []}]}]},
+       {tr, [],
+        [{td, [],
+          [{table, [{cellspacing, 0}],
+            histogram_data_table(ShowTable, Id, Data, ReportCfg)}]}]}]}].
 
 histogram_data_table(false,_Id,_Data,_ReportCfg) -> [];
 histogram_data_table(true, Id, Data, ReportCfg) ->
     frame(Id, stats_headers(false), Data, fun stats_display_f/1, ReportCfg).
+
+table_section(Title) ->
+    [{tr, [], [{td, [], [br]}]}, % vskip
+     {tr, [],
+      [{th, [{align, left}],
+        [{font, [{size, "+1"}], [{str, Title}]}]}]}].
 
 %% A frame shows tabular data and allows the user to click on headers
 %% to sort the data according to a certain column.
@@ -296,7 +303,9 @@ stripe_rows([Row|Rest], Acc, false) ->
 %% - {sort, ColN, Dir} to specify the currently selected sort on
 %%      the frame;
 %% - {show_table, boolean()} to specify whether a table with the
-%%      raw data underlying the graph should be shown.
+%%      raw data underlying the graph should be shown;
+%% - {logscale_y, boolean()} to specify whether the y axis should
+%%      be scaled logarithmically.
 config_update(ReportCfg, Link) ->
     [IdStr, KeyStr | ArgsStrL] = string:tokens(Link, "."),
     Id = list_to_atom(IdStr),
@@ -305,6 +314,8 @@ config_update(ReportCfg, Link) ->
     NewSetting = config_update(Key, OldSetting, ArgsStrL),
     config_store(Id, NewSetting, ReportCfg).
 
+config_update(logscale_y, _OldSetting, [BooleanStr]) ->
+    {logscale_y, list_to_atom(BooleanStr)};
 config_update(show_table, _OldSetting, [BooleanStr]) ->
     {show_table, list_to_atom(BooleanStr)};
 config_update(sort, OldSetting, [ColStr]) ->
@@ -342,6 +353,7 @@ config_link(Id, Key, Data) ->
 config_defaults() ->
     [ {sort, 1, ascending}
     , {show_table, false}
+    , {logscale_y, false}
     ].
 
 invert_dir(ascending) -> descending;
