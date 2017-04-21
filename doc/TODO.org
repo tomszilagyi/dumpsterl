@@ -270,9 +270,7 @@ see them in action.
   Field is the field number and Attribute is the field name.
 
 *** TODO GUI outstanding tasks
-- histogram:
-  - links to set binning on/off, ylog on/off
-  - link to show/hide underlying data as a table
+- fix timeline graph with 1 datapoint where StartTs equals EndTs
 *** GUI toolbars
 **** at the top of spec window
 - show probe metadata

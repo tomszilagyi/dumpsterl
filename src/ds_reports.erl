@@ -185,10 +185,24 @@ histogram(Id, Title, Data, ReportCfg) ->
                         true  -> set;
                         false -> unset
                     end,
+    {hist_autobins, AutoBins} = config_lookup(Id, hist_autobins, ReportCfg),
+    AutoBinsLink = config_link(Id, hist_autobins, not AutoBins),
+    AutoBinsLinkText = case AutoBins of
+                            true  -> "[Raw x-data]";
+                            false -> "[Auto-binned]"
+                        end,
     {width, Width} = config_lookup(report, width, ReportCfg),
+    BinnedData = case AutoBins of
+                     true  ->
+                         %% manually tuned based on gnuplot output:
+                         NBins = max(1, (Width - 100) div 30),
+                         bin_histdata(Data, NBins);
+                     false ->
+                         Data
+                 end,
     PngFile = ds_graphics:histogram_graph([{set_logscale_y, LogScaleYAttr},
                                            {xsize, Width-40}], %% FIXME
-                                          Data),
+                                          BinnedData),
     ds_graphics:gc_image_file(PngFile, ?IMAGE_GC_TIMEOUT),
     [{table, [{width, "100%"}, {cellspacing, 0}],
       [table_section(Title),
@@ -196,7 +210,9 @@ histogram(Id, Title, Data, ReportCfg) ->
         [{th, [{align, left}],
           [{a, [{href, ShowTableLink}], [{str, ShowTableLinkText}]},
            {str, " "},
-           {a, [{href, LogScaleYLink}], [{str, LogScaleYLinkText}]}]}]},
+           {a, [{href, LogScaleYLink}], [{str, LogScaleYLinkText}]},
+           {str, " "},
+           {a, [{href, AutoBinsLink}], [{str, AutoBinsLinkText}]}]}]},
        {tr, [],
         [{td, [],
           [{img, [{src, PngFile}], []}]}]},
@@ -208,6 +224,22 @@ histogram(Id, Title, Data, ReportCfg) ->
 histogram_data_table(false,_Id,_Data,_ReportCfg) -> [];
 histogram_data_table(true, Id, Data, ReportCfg) ->
     frame(Id, stats_headers(false), Data, fun stats_display_f/1, ReportCfg).
+
+bin_histdata(Data, Bins) when length(Data) =< Bins -> Data;
+bin_histdata([{FirstValue,_}|_] = Data, Bins) ->
+    {LastValue,_} = lists:last(Data),
+    Span = LastValue - FirstValue,
+    BinWidth = Span / Bins,
+    BinRanges =
+        [{FirstValue + BinWidth * Seq,
+          FirstValue + BinWidth * (Seq + 1)} || Seq <- lists:seq(0, Bins-2)]
+        ++ [{FirstValue + BinWidth * (Bins-1), LastValue}],
+    [select_bin({From, To}, LastValue, Data) || {From, To} <- BinRanges].
+
+select_bin({From, To}, To, Data) ->
+    {(From + To) / 2, lists:sum([C || {V,C} <- Data, V >= From, V =< To])};
+select_bin({From, To},_LastValue, Data) ->
+    {(From + To) / 2, lists:sum([C || {V,C} <- Data, V >= From, V < To])}.
 
 table_section(Title) ->
     [{tr, [], [{td, [], [br]}]}, % vskip
@@ -305,7 +337,9 @@ stripe_rows([Row|Rest], Acc, false) ->
 %% - {show_table, boolean()} to specify whether a table with the
 %%      raw data underlying the graph should be shown;
 %% - {logscale_y, boolean()} to specify whether the y axis should
-%%      be scaled logarithmically.
+%%      be scaled logarithmically;
+%% - {hist_autobins, boolean()} to specify whether x values of a
+%%      histogram should be auto-binned.
 config_update(ReportCfg, Link) ->
     [IdStr, KeyStr | ArgsStrL] = string:tokens(Link, "."),
     Id = list_to_atom(IdStr),
@@ -314,6 +348,8 @@ config_update(ReportCfg, Link) ->
     NewSetting = config_update(Key, OldSetting, ArgsStrL),
     config_store(Id, NewSetting, ReportCfg).
 
+config_update(hist_autobins, _OldSetting, [BooleanStr]) ->
+    {hist_autobins, list_to_atom(BooleanStr)};
 config_update(logscale_y, _OldSetting, [BooleanStr]) ->
     {logscale_y, list_to_atom(BooleanStr)};
 config_update(show_table, _OldSetting, [BooleanStr]) ->
@@ -354,6 +390,7 @@ config_defaults() ->
     [ {sort, 1, ascending}
     , {show_table, false}
     , {logscale_y, false}
+    , {hist_autobins, false}
     ].
 
 invert_dir(ascending) -> descending;
@@ -429,6 +466,19 @@ nl_encode([H|T], Acc) -> nl_encode(T, [H|Acc]).
 
 %% Tests
 -ifdef(TEST).
+
+bin_histdata_test() ->
+    Data = [{1,   6481}, {3, 862931}, {4,   5109}, {5,  59340},
+            {6,  32026}, {7,  54689}, {8, 137813}, {11, 53553}],
+    BinnedData1 = bin_histdata(Data, 1),
+    ?assertEqual([{6.0, 1211942}], BinnedData1),
+    BinnedData2 = bin_histdata(Data, 2),
+    ?assertEqual([{3.5, 933861}, {8.5, 278081}], BinnedData2),
+    BinnedData4 = bin_histdata(Data, 4),
+    ?assertEqual([{2.25, 869412},
+                  {4.75, 64449},
+                  {7.25, 224528},
+                  {9.75, 53553}], BinnedData4).
 
 config_lookup_test() ->
     ?assertEqual({sort, 1, ascending}, % default picked due to missing id

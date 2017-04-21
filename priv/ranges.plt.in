@@ -1,6 +1,7 @@
 set terminal pngcairo size $xsize,$ysize enhanced font "Verdana,10"
 set termoption noenhanced
 set encoding utf8
+set datafile separator ","
 set output $pngfile
 set key off
 set offsets graph 0.05, 0.05, 0.05, 0.05
