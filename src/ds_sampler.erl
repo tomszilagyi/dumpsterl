@@ -62,13 +62,6 @@ add_hash({Hash, {V, A}}, #sampler{capacity = Capacity,
 add_hash({Hash, {_V,_A}}, #sampler{max_hash = MaxHash} = Sampler)
   when Hash > MaxHash ->
     Sampler;
-add_hash({Hash, {V, A}}, #sampler{max_hash = MaxHash,
-                                  tree = Tree0} = Sampler)
-  when Hash =:= MaxHash ->
-    {Hash, {V, PV0}} = gb_trees:largest(Tree0),
-    PV = ds_pvattrs:add(A, PV0),
-    Tree = gb_trees:update(Hash, {V, PV}, Tree0),
-    Sampler#sampler{tree = Tree};
 add_hash({Hash, {V, A}}, #sampler{capacity = Capacity,
                                   size = Size0, tree = Tree0} = Sampler) ->
     {Tree1, Size1} = update_tree(Hash, {V, A}, Tree0, Size0),
