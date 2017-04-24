@@ -12,6 +12,7 @@
         , add_hash/2
         , join/2
         , get_samples/1
+        , get_size/1
         ]).
 
 -ifdef(TEST).
@@ -130,6 +131,10 @@ join(Sampler1, #sampler{tree = Tree2}) ->
 %% Return a list of {V, PV}
 get_samples(undefined) -> [];
 get_samples(#sampler{tree = Tree}) -> lists:flatten(gb_trees:values(Tree)).
+
+%% Return the number of unique values sampled
+get_size(undefined) -> 0;
+get_size(#sampler{size = Size}) -> Size.
 
 
 %% Tests

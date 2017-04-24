@@ -56,11 +56,16 @@ get_pts(#stats{pts=Pts}) -> Pts.
 
 get_samples(#stats{sampler=Sampler}) -> ds_sampler:get_samples(Sampler).
 
-get_cardinality(#stats{count=Count, hyperloglog=HLL}) ->
+get_cardinality(#stats{count=Count,
+                       sampler=Sampler,
+                       hyperloglog=HLL}) ->
     Estimate = ds_hyperloglog:estimate(HLL),
     RelativeError = ds_hyperloglog:error_est(HLL),
     AbsError = Estimate * RelativeError,
-    {erlang:min(round(Estimate), Count), round(AbsError)}.
+    UniqueSamples = ds_sampler:get_size(Sampler),
+    %% Limit the estimate to the range UniqueSamples...Count
+    {erlang:min(erlang:max(UniqueSamples, round(Estimate)), Count),
+     round(AbsError)}.
 
 
 %% Join two statistics into one
