@@ -18,7 +18,7 @@ Stuff that definitely needs treatment before the initial public release
     to manually call functions in, eg. ds:shell(), ds:gui(), etc.
 
 *** TODO testing
-**** TODO test data model
+**** DONE test data model
 
 An exemplary data model should be devised and a data generator written
 that randomly generates instances of that data, for testing purposes.

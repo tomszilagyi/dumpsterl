@@ -1,0 +1,94 @@
+%% Key-value pairs in this file will be loaded into the testdb
+%% generator's process dictionary. The keys used in the tuples
+%% must not clash with any existing process dictionary keys.
+
+{errno,
+ [ {'EPERM',        1,  "Operation not permitted"}
+ , {'ENOENT',       2,  "No such file or directory"}
+ , {'ESRCH',        3,  "No such process"}
+ , {'EINTR',        4,  "Interrupted system call"}
+ , {'EIO',          5,  "I/O error"}
+ , {'ENXIO',        6,  "No such device or address"}
+ , {'E2BIG',        7,  "Argument list too long"}
+ , {'ENOEXEC',      8,  "Exec format error"}
+ , {'EBADF',        9,  "Bad file number"}
+ , {'ECHILD',      10,  "No child processes"}
+ , {'EAGAIN',      11,  "Try again"}
+ , {'ENOMEM',      12,  "Out of memory"}
+ , {'EACCES',      13,  "Permission denied"}
+ , {'EFAULT',      14,  "Bad address"}
+ , {'ENOTBLK',     15,  "Block device required"}
+ , {'EBUSY',       16,  "Device or resource busy"}
+ , {'EEXIST',      17,  "File exists"}
+ , {'EXDEV',       18,  "Cross-device link"}
+ , {'ENODEV',      19,  "No such device"}
+ , {'ENOTDIR',     20,  "Not a directory"}
+ , {'EISDIR',      21,  "Is a directory"}
+ , {'EINVAL',      22,  "Invalid argument"}
+ , {'ENFILE',      23,  "File table overflow"}
+ , {'EMFILE',      24,  "Too many open files"}
+ , {'ENOTTY',      25,  "Not a typewriter"}
+ , {'ETXTBSY',     26,  "Text file busy"}
+ , {'EFBIG',       27,  "File too large"}
+ , {'ENOSPC',      28,  "No space left on device"}
+ , {'ESPIPE',      29,  "Illegal seek"}
+ , {'EROFS',       30,  "Read-only file system"}
+ , {'EMLINK',      31,  "Too many links"}
+ , {'EPIPE',       32,  "Broken pipe"}
+ , {'EDOM',        33,  "Math argument out of domain of func"}
+ , {'ERANGE',      34,  "Math result not representable"}]}.
+
+{names,
+ [ "Karl", "Erik", "Lars", "Anders", "Per", "Mikael"
+ , "Johan", "Olof", "Nils", "Jan", "Gustav", "Hans"
+ , "Lennart", "Peter", "Gunnar", "Sven", "Fredrik", "Thomas"
+ , "Bengt", "Bo", "Daniel", "Åke", "Göran", "Alexander"
+ , "Oskar", "Christer", "Andreas", "Stefan", "Magnus", "Martin"
+ , "Mats", "John", "Mattias", "Leif", "Henrik", "Ulf"
+ , "Björn", "Jonas", "Bertil", "Arne", "Axel", "Ingemar"
+ , "Robert", "Christian", "Marcus", "Niklas", "David", "Viktor"
+ , "Emil", "Kjell", "Maria", "Elisabeth", "Anna", "Kristina"
+ , "Margareta", "Eva", "Birgitta", "Karin", "Linnéa", "Marie"
+ , "Ingrid", "Sofia", "Marianne", "Kerstin", "Lena", "Helena"
+ , "Sara", "Emma", "Katarina", "Johanna", "Inger", "Viktoria"
+ , "Cecilia", "Monica", "Susanne", "Elin", "Jenny", "Therese"
+ , "Anita", "Irene", "Hanna", "Louise", "Carina", "Ulla"
+ , "Ingegerd", "Ann", "Gunilla", "Viola", "Linda", "Helen"
+ , "Ida", "Malin", "Annika", "Matilda", "Ulrika", "Elsa"
+ , "Josefin", "Anette", "Sofie", "Barbro"]}.
+
+{surnames,
+ [ "Andersson", "Johansson", "Karlsson", "Nilsson", "Eriksson"
+ , "Larsson", "Olsson", "Persson", "Svensson", "Gustafsson"
+ , "Pettersson", "Jonsson", "Jansson", "Hansson", "Bengtsson"
+ , "Jönsson", "Lindberg", "Jakobsson", "Magnusson", "Olofsson"
+ , "Lindström", "Lindqvist", "Lindgren", "Axelsson", "Berg"
+ , "Bergström", "Lundberg", "Lundgren", "Lind", "Lundqvist"
+ , "Mattsson", "Berglund", "Fredriksson", "Sandberg", "Henriksson"
+ , "Forsberg", "Sjöberg", "Wallin", "Engström", "Eklund"
+ , "Danielsson", "Håkansson", "Lundin", "Gunnarsson", "Björk"
+ , "Bergman", "Holm", "Samuelsson", "Fransson", "Wikström"
+ , "Isaksson", "Bergqvist", "Nyström", "Arvidsson", "Holmberg"
+ , "Löfgren", "Ali", "Söderberg", "Mohamed", "Nyberg"
+ , "Blomqvist", "Claesson", "Mårtensson", "Nordström", "Lundström"
+ , "Eliasson", "Pålsson", "Viklund", "Björklund", "Berggren"
+ , "Sandström", "Lund", "Nordin", "Ström", "Åberg"
+ , "Hermansson", "Ekström", "Holmgren", "Hedlund", "Falk"
+ , "Sundberg", "Dahlberg", "Hellström", "Sjögren", "Abrahamsson"
+ , "Ek", "Blom", "Martinsson", "Öberg", "Ahmed"
+ , "Andreasson", "Hassan", "Månsson", "Strömberg", "Åkesson"
+ , "Hansen", "Jonasson", "Norberg", "Åström", "Sundström"]}.
+
+{tlds,
+ [com, edu, gov, int, mil, net, org,
+  de, dk, eu, fi, hu, io, no, se, uk]}.
+
+{domains,
+ [ ad, alley, arch, articles, boot, borough, broadcast, cellular
+ , chronicle, click, compute, dairy, deli, demo, developer, discover
+ , emporium, function, hearing, install, interest, issue, library
+ , matter, medium, middle, miracle, newspaper, official, position
+ , reader, rentacar, seller, shell, wholesale, writable]}.
+
+{subdomains,
+ [ ftp, ftp1, www, "www-ftp", database, "dev-app1", "prod-db1" ]}.

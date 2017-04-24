@@ -1,5 +1,6 @@
 %% -*- coding: utf-8 -*-
 -module(ds_test).
+-author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 -include_lib("eunit/include/eunit.hrl").
 

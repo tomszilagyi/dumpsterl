@@ -1,5 +1,6 @@
 %% -*- coding: utf-8 -*-
 -module(ds_drv_test).
+-author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 -define(M, ds_drv).
 
