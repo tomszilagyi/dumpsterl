@@ -38,7 +38,7 @@
 %%     - an integer count of data items covered by this type class.
 %%     - an even sampling of the data values
 %%   - Ext is class-specific extra/extended data to hold
-%%     further statistics.
+%%     further attributes and/or statistics.
 %%
 %% - SubSpec is a list of child nodes. Depending on the kind of type
 %%   denoted by Class, this may be a list of subtypes or in case of
@@ -135,17 +135,43 @@ merge_improper({Vs, Vt, A}, [ListSpec0, TailSpec0]) ->
 
 
 %% Join two spec trees into one.
-%% Depending on class kind, subspec trees are either joined (by class)
-%% or zipped (by position).
+%% This clause is for maps where the children lists are joined
+%% based on attributes stored in Ext.
+join({map=Class, {Stats1, Ext1}, ChildL1},
+         {Class, {Stats2, Ext2}, ChildL2}) ->
+    Stats = ds_stats:join(Stats1, Stats2),
+    Ext = lists:usort(Ext1 ++ Ext2), % joined attribute list
+    AttrDict1 = lists:zip(Ext1, ChildL1),
+    AttrDict2 = lists:zip(Ext2, ChildL2),
+    ChildL =
+        %% For each attribute in joined Ext, look it up in both children
+        %% and join appropriately into the result child spec list.
+        lists:foldl(
+          fun(Attr, Acc) ->
+                  case {lists:keyfind(Attr, 1, AttrDict1),
+                        lists:keyfind(Attr, 1, AttrDict2)} of
+                      { {Attr, Spec1}, {Attr, Spec2} } ->
+                          [join(Spec1, Spec2) | Acc];
+                      { {Attr, Spec1}, false } ->
+                          [Spec1 | Acc];
+                      { false, {Attr, Spec2} } ->
+                          [Spec2 | Acc]
+                  end
+          end, [], lists:reverse(Ext)),
+    {Class, {Stats, Ext}, ChildL};
+%% Subspec (child) trees are joined in a class-specific manner:
+%%   - joined by attributes stored in Ext for maps (see above clause);
+%%   - zipped (by position) for other generic types;
+%%   - joined (by class) for all other types.
 join({Class, {Stats1, Ext1}, ChildL1},
      {Class, {Stats2, Ext2}, ChildL2}) ->
+    Stats = ds_stats:join(Stats1, Stats2),
+    Ext = ds_types:ext_join(Class, Ext1, Ext2),
     ChildL = case ds_types:kind(Class) of
                  generic -> lists:zipwith(fun join/2, ChildL1, ChildL2);
                  _       -> join_specs(ChildL1, ChildL2)
              end,
-    {Class,
-     {ds_stats:join(Stats1, Stats2), ds_types:ext_join(Class, Ext1, Ext2)},
-     ChildL}.
+    {Class, {Stats, Ext}, ChildL}.
 
 join_specs(Acc, []) -> Acc;
 join_specs(Acc0, [{Class,_Data,_ChildL}=Spec | Rest]) ->
