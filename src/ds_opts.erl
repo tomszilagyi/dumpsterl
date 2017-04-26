@@ -169,7 +169,9 @@ normalize_opt(limit, infinity) -> true;
 normalize_opt(limit, N) ->
     true = is_integer(N) andalso N > 0, true;
 normalize_opt(mnesia_dir, D) ->
-    true = filelib:is_dir(D), true;
+    true = filelib:is_dir(D),
+    true = filelib:is_regular(filename:join(D, "schema.DAT")),
+    true;
 normalize_opt(procs, N) ->
     true = is_integer(N) andalso N > 0, true;
 normalize_opt(progress, false) -> true;
@@ -243,13 +245,11 @@ normalize_opts_test() ->
     Opts = normalize_opts([ {samples, 100}
                           , dump
                           , {no, [such], <<"option">>}
-                          , {mnesia_dir, "."}
                           , {term, vt100}
                           , hll_b
                           ]),
     ?assertEqual(100, getopt(samples, Opts)),
     ?assertEqual("ds.bin", getopt(dump, Opts)),
-    ?assertEqual(".", getopt(mnesia_dir, Opts)),
     ?assertEqual("vt100", getopt(term, Opts)),
     ?assertEqual(8, getopt(hll_b, Opts)).
 

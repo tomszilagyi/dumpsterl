@@ -62,6 +62,16 @@ mnesia_schema() ->
     end.
 
 mnesia_schema(SchemaFile) ->
+    Exists = filelib:is_regular(SchemaFile),
+    if Exists ->
+            do_mnesia_schema(SchemaFile);
+       true ->
+            io:format("cannot read ~s, no attributes collected from mnesia\n",
+                      [SchemaFile]),
+            []
+    end.
+
+do_mnesia_schema(SchemaFile) ->
     io:format("collecting record attributes from ~s ... ", [SchemaFile]),
     {ok, _} = dets:open_file(schema, [{file, SchemaFile}, {repair, false}, {keypos, 2}]),
     R = lists:usort(dets:traverse(schema, fun dets_traverse_f/1)),
@@ -91,7 +101,7 @@ try_mnesia_dirs([]) ->
     io:format("unable to guess mnesia_dir, no record attributes from Mnesia.\n"),
     undefined;
 try_mnesia_dirs([Dir|Rest]) ->
-    case filelib:is_file(filename:join(Dir, "schema.DAT")) of
+    case filelib:is_regular(filename:join(Dir, "schema.DAT")) of
         true  -> Dir;
         false -> try_mnesia_dirs(Rest)
     end.
