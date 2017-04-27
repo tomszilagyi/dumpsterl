@@ -25,11 +25,11 @@ maps_test() ->
 
     {term, {_, []}, [{atom, {StatsK1, _}, []}]} = Ch1,
     ?assertEqual(3, ds_stats:get_count(StatsK1)),
-    ?assertEqual([aa,ac,ad], [V || {V,_PV} <- ds_stats:get_samples(StatsK1)]),
+    ?assertEqual([aa,ad,ac], [V || {V,_PV} <- ds_stats:get_samples(StatsK1)]),
 
     {term, {_, []}, [{atom, {StatsK2, _}, []}]} = Ch2,
     ?assertEqual(4, ds_stats:get_count(StatsK2)),
-    ?assertEqual([ba,bb,bd,be], [V || {V,_PV} <- ds_stats:get_samples(StatsK2)]),
+    ?assertEqual([ba,bd,be,bb], [V || {V,_PV} <- ds_stats:get_samples(StatsK2)]),
 
     {term, {_, []}, [{atom, {StatsK3, _}, []}]} = Ch3,
     ?assertEqual(2, ds_stats:get_count(StatsK3)),
@@ -37,6 +37,6 @@ maps_test() ->
 
     {term, {_, []}, [{atom, {StatsK4, _}, []}]} = Ch4,
     ?assertEqual(3, ds_stats:get_count(StatsK4)),
-    ?assertEqual([db,dd,de], [V || {V,_PV} <- ds_stats:get_samples(StatsK4)]).
+    ?assertEqual([de,dd,db], [V || {V,_PV} <- ds_stats:get_samples(StatsK4)]).
 
 -endif.

@@ -44,14 +44,14 @@ new(T) ->
 %% Add a new term to the HyperLogLog cardinality estimator.
 add(_T, undefined) -> undefined;
 add(T, HyperLogLog) ->
-    Hash = erlang:phash2(T, 1 bsl 32),
+    Hash = ds_utils:hash(T),
     add_hash(Hash, HyperLogLog).
 
 %% The HyperLogLog algorithm requires a hash that maps to 32-bit words.
 %% This function is provided as an entry point in case you have already
 %% hashed your terms with a suitable function and want to spare another
 %% hash computation. In this case, please make sure to use a suitable
-%% hash function (erlang:phash2 with Range set to 2^32 is recommended).
+%% hash function (ds_utils:hash/1 is strongly recommended)!
 %% In case of doubt, just use add/2 above.
 add_hash(_Hash, undefined) -> undefined;
 add_hash(Hash, #hyperloglog{b = B, dw = Dw, dmask = Dmask,
@@ -293,6 +293,25 @@ join_test() ->
     HLL = join(HLL1, HLL2),
     AbsError = abs(End2 - estimate(HLL)) / End2,
     ?assert(AbsError =< error_est(HLL)).
+
+hash_quality_test() ->
+    %% Make sure that the hash we use by default is good enough.
+    N = 500000,
+    HLL = hash_quality_test_feeder_loop(new(9), N),
+    Estimate = estimate(HLL),
+    ErrorEst = error_est(HLL),
+    %% N.B.: estimated error is sometimes too small, hence the factor of 1.5
+    LowerErrorBound = Estimate * (1.0 - 1.5 * ErrorEst),
+    UpperErrorBound = Estimate * (1.0 + 1.5 * ErrorEst),
+    ?assert(N >= LowerErrorBound),
+    ?assert(N =< UpperErrorBound).
+
+hash_quality_test_feeder_loop(HLL, 0) -> HLL;
+hash_quality_test_feeder_loop(HLL, N) ->
+   hash_quality_test_feeder_loop(add(erlang:make_ref(), HLL), N-1).
+   %% NB. This fails the test:
+   %% Hash = erlang:phash2(erlang:make_ref(), 1 bsl 32),
+   %% hash_quality_test_feeder_loop(add_hash(Hash, HLL), N-1).
 
 %% Print a nice table of hyperloglog estimator performance.
 %% This is not part of the EUnit tests, must be run manually.

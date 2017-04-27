@@ -2,7 +2,8 @@
 -module(ds_utils).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--export([ index/2
+-export([ hash/1
+        , index/2
         , integer_to_sigfig/1
         , timediff_str/1
         ]).
@@ -10,6 +11,13 @@
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+
+%% Hash function used by the statistics modules.
+%% Note: the hash value must be truncated to 32 bits.
+hash(Term) ->
+    <<Hash:32, _/binary>> = crypto:hash(md4, term_to_binary(Term)),
+    Hash.
+
 
 %% Return the first index N so that lists:nth(N, List) would return E
 %% or 'error' if E is not a member of List.
@@ -29,6 +37,7 @@ integer_to_sigfig([A,B,C|Rest], []) -> integer_to_sigfig(Rest, [C,B,A]);
 integer_to_sigfig([A,B,C|Rest], Acc) -> integer_to_sigfig(Rest, [C,B,A,$,|Acc]);
 integer_to_sigfig(R, []) -> lists:reverse(R);
 integer_to_sigfig(R, Acc) -> [lists:reverse(R),$,|Acc].
+
 
 %% return a string specifying elapsed time
 timediff_str(FloatSecs) ->

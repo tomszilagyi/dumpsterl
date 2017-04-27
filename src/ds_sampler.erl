@@ -42,14 +42,14 @@ new(T) ->
 %% that maintains stats for each sampled value.
 add(_VA, undefined) -> undefined;
 add({V, A}, Sampler) ->
-    Hash = erlang:phash2(V, 1 bsl 32),
+    Hash = ds_utils:hash(V),
     add_hash({Hash, {V, A}}, Sampler).
 
 %% The sampler algorithm requires a hash that maps to 32-bit words.
 %% This function is provided as an entry point in case you have already
 %% hashed your terms with a suitable function and want to spare another
 %% hash computation. In this case, please make sure to use a suitable
-%% hash function (erlang:phash2 with the Range set to 2^32 is recommended).
+%% hash function (ds_utils:hash/1 is strongly recommended)!
 %% In case of doubt, just use add/2 above.
 add_hash(_Data, undefined) -> undefined;
 add_hash({Hash, {V, A}}, #sampler{capacity = Capacity,
@@ -149,6 +149,12 @@ print(#sampler{capacity = Capacity, size = Size, tree = Tree,
 -define(print(Sampler), ok).
 -endif.
 
+%% Use a weaker hash function when testing collisions.
+ctadd(_VA, undefined) -> undefined;
+ctadd({V, A}, Sampler) ->
+    Hash = erlang:phash2(V, 1 bsl 32),
+    add_hash({Hash, {V, A}}, Sampler).
+
 new_test() ->
     ?assertError(badarg, new(0)),
     ?assertError(badarg, new(nan)),
@@ -195,8 +201,8 @@ collisions_test() ->
         , 6161979, 6660282, 7669964
         ],
 
-    S0 = lists:foldl(fun add/2, new(infinity), [{N, []} || N <- NonColliders]),
-    S1 = lists:foldl(fun add/2, S0, [{N, []} || N <- Colliders]),
+    S0 = lists:foldl(fun ctadd/2, new(infinity), [{N, []} || N <- NonColliders]),
+    S1 = lists:foldl(fun ctadd/2, S0, [{N, []} || N <- Colliders]),
     SampleCount = length(NonColliders) + length(Colliders),
     ?assertEqual(SampleCount, length(get_samples(S1))),
     SampleValues = lists:sort(Colliders ++ NonColliders),
@@ -261,9 +267,9 @@ join_with_collisions_test() ->
     %% we want all samples to fit into one sampler
     TotalCap = length(L1) + length(L2),
 
-    S1 = lists:foldl(fun add/2, new(TotalCap), [{N, []} || N <- L1]),
+    S1 = lists:foldl(fun ctadd/2, new(TotalCap), [{N, []} || N <- L1]),
     ?print(S1),
-    S2 = lists:foldl(fun add/2, new(TotalCap), [{N, []} || N <- L2]),
+    S2 = lists:foldl(fun ctadd/2, new(TotalCap), [{N, []} || N <- L2]),
     ?print(S2),
 
     Sj = join(S1, S2),
