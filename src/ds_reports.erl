@@ -166,6 +166,9 @@ report_ext(bitstring, Ext, ReportCfg) ->
     histogram(size_dist, "Bit size histogram", Ext, ReportCfg);
 report_ext(nonempty_list, Ext, ReportCfg) ->
     histogram(length_dist, "List length histogram", Ext, ReportCfg);
+report_ext(improper_list, Ext, ReportCfg) ->
+    histogram(length_dist, "List length histogram (excluding tail)",
+              Ext, ReportCfg);
 report_ext(_Class, Ext,_ReportCfg) ->
     [{font, [{size, "+2"}], [br, {str, "Extended data (raw)"}, br, br]},
      {term, Ext}].

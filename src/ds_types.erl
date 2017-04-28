@@ -193,6 +193,7 @@ ext_add(VA, bitstring, Ext) -> ext_add_bitstring(VA, Ext);
 ext_add(VA, binary, Ext) -> ext_add_bitstring(VA, Ext);
 ext_add(VA, <<>>, Ext) -> ext_add_bitstring(VA, Ext);
 ext_add(VA, nonempty_list, Ext) -> ext_add_nonempty_list(VA, Ext);
+ext_add(VA, improper_list, Ext) -> ext_add_improper_list(VA, Ext);
 
 ext_add(_V,_Class, Ext) -> Ext.
 
@@ -208,9 +209,14 @@ ext_add_atom({V, Attrs}, Ext) ->
 ext_add_bitstring({V,_Attrs}, Ext) ->
     histogram_add(bit_size(V), Ext).
 
-%% For lists, maintain a histogram of lengths
+%% For nonempty lists, maintain a histogram of lengths
 ext_add_nonempty_list({V,_Attrs}, Ext) ->
     histogram_add(length(V), Ext).
+
+%% For improper lists, maintain a histogram of the proper parts' lengths
+ext_add_improper_list({V,_Attrs}, Ext) ->
+    {'$improper_list', ProperL,_Tail} = improper_list(V),
+    histogram_add(length(ProperL), Ext).
 
 %% class-specific joins
 %% NB. these may be called even with Ext's of different classes,
@@ -218,9 +224,11 @@ ext_add_nonempty_list({V,_Attrs}, Ext) ->
 %% and Ext1 will correspond to the super-class, Ext2 to the sub-class.
 ext_join(atom, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
 ext_join(boolean, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
+ext_join(<<>>, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(binary, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(bitstring, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(nonempty_list, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
+ext_join(improper_list, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 %% In the general case, different classes' Ext cannot be joined:
 ext_join(_Class, Ext1,_Ext2) -> Ext1.
 
@@ -336,10 +344,28 @@ ext_nonempty_list_test() ->
     E4 = ext_add({[list_item], []}, C, E3),
     ?assertEqual([{1,1}, {2,1}, {3,2}], E4),
 
-    E5 = ext_add({[some, items], []}, C, E0),
+    E5 = ext_add({[some,items], []}, C, E0),
     E6 = ext_add({[x], []}, C, E5),
     E7 = ext_add({[y], []}, C, E6),
     E8 = ext_add({[z], []}, C, E7),
+    ?assertEqual([{1,3}, {2,1}], E8),
+
+    E9 = ext_join(C, E4, E8),
+    ?assertEqual([{1,4}, {2,2}, {3,2}], E9).
+
+ext_improper_list_test() ->
+    C = improper_list,
+    E0 = ext_new(C),
+    E1 = ext_add({[a,b,c|tail1], []}, C, E0),
+    E2 = ext_add({[6,7,8|tail2], []}, C, E1),
+    E3 = ext_add({[9,10|tail3], []}, C, E2),
+    E4 = ext_add({[list_item|tail4], []}, C, E3),
+    ?assertEqual([{1,1}, {2,1}, {3,2}], E4),
+
+    E5 = ext_add({[some,items|tail5], []}, C, E0),
+    E6 = ext_add({[x|tail6], []}, C, E5),
+    E7 = ext_add({[y|tail7], []}, C, E6),
+    E8 = ext_add({[z|tail8], []}, C, E7),
     ?assertEqual([{1,3}, {2,1}], E8),
 
     E9 = ext_join(C, E4, E8),
