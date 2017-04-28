@@ -208,15 +208,16 @@ join_up({Class, Data0, SubSpec0}) ->
     SubSpec = [join_up(SSp) || SSp <- SubSpec0],
     Data = case ds_types:kind(Class) of
                generic -> Data0; % don't cross type domains with the join
-               _       -> join_data(Data0, SubSpec)
+               _       -> {Class, JointData} = join_data({Class, Data0}, SubSpec),
+                          JointData
            end,
     {Class, Data, SubSpec}.
 
-join_data(Data, SubSpec) -> lists:foldl(fun join_data_f/2, Data, SubSpec).
+join_data(Acc, SubSpec) -> lists:foldl(fun join_data_f/2, Acc, SubSpec).
 
-%% NB. do not propagate Ext upwards, since that is class-specific.
-join_data_f({_Class, {Stats1,_Ext1}, _SubSpec}, {Stats0, Ext0}) ->
-    {ds_stats:join(Stats0, Stats1), Ext0}.
+join_data_f({_Class, {Stats1, Ext1}, _SubSpec}, {SuperClass, {Stats0, Ext0}}) ->
+    {SuperClass,
+     {ds_stats:join(Stats0, Stats1), ds_types:ext_join(SuperClass, Ext0, Ext1)}}.
 
 
 %% Tests

@@ -159,6 +159,8 @@ tk_attrs_present(PVAttrs, Rest) ->
 
 report_ext(_Class, [],_ReportCfg) -> [];
 report_ext(atom,_Ext,_ReportCfg) -> []; % used as Samples in the common report
+report_ext(boolean, Ext, ReportCfg) -> report_ext(atom, Ext, ReportCfg);
+report_ext(<<>>, Ext, ReportCfg) -> report_ext(bitstring, Ext, ReportCfg);
 report_ext(binary, Ext, ReportCfg) -> report_ext(bitstring, Ext, ReportCfg);
 report_ext(bitstring, Ext, ReportCfg) ->
     histogram(size_dist, "Bit size histogram", Ext, ReportCfg);

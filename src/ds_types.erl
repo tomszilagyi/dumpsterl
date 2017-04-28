@@ -188,9 +188,12 @@ ext_new(_Class) -> [].
 
 %% class-specific per-term updaters
 ext_add(VA, atom, Ext) -> ext_add_atom(VA, Ext);
-ext_add(VA, binary, Ext) -> ext_add_bitstring(VA, Ext);
+ext_add(VA, boolean, Ext) -> ext_add_atom(VA, Ext);
 ext_add(VA, bitstring, Ext) -> ext_add_bitstring(VA, Ext);
+ext_add(VA, binary, Ext) -> ext_add_bitstring(VA, Ext);
+ext_add(VA, <<>>, Ext) -> ext_add_bitstring(VA, Ext);
 ext_add(VA, nonempty_list, Ext) -> ext_add_nonempty_list(VA, Ext);
+
 ext_add(_V,_Class, Ext) -> Ext.
 
 %% For atoms, maintain a dictionary of per-value stats for each value
@@ -210,11 +213,17 @@ ext_add_nonempty_list({V,_Attrs}, Ext) ->
     histogram_add(length(V), Ext).
 
 %% class-specific joins
+%% NB. these may be called even with Ext's of different classes,
+%% but only if one is a super-class of another. The clause called
+%% and Ext1 will correspond to the super-class, Ext2 to the sub-class.
 ext_join(atom, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
+ext_join(boolean, Ext1, Ext2) -> ext_join_atom(Ext1, Ext2);
 ext_join(binary, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(bitstring, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
 ext_join(nonempty_list, Ext1, Ext2) -> histogram_join(Ext1, Ext2);
+%% In the general case, different classes' Ext cannot be joined:
 ext_join(_Class, Ext1,_Ext2) -> Ext1.
+
 
 ext_join_atom(Ext1, Ext2) ->
     orddict:merge(fun(_K, V1, V2) -> ds_pvattrs:join(V1, V2) end, Ext1, Ext2).

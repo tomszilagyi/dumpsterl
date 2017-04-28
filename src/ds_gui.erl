@@ -194,7 +194,10 @@ terminate(_Reason, _State) ->
 update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_children=TextChildren, zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
-    Stack0 = ds_zipper:stack(Zipper),
+    StackTransFun = fun({Class, Data,_ChildL}, NthChild) ->
+                            {Class, NthChild, Data}
+                    end,
+    Stack0 = ds_zipper:stack(Zipper, StackTransFun),
     Stack = stack_with_parent_refs(Stack0),
     LastIdx = length(Stack)-1,
     StWidths = add_stack(LC_Stack, Stack),
@@ -228,8 +231,8 @@ scrolled_win_set_pos(Win, {Px, Py}) ->
 stack_with_parent_refs(Stack) ->
     Shifted = [{undefined, undefined, undefined} |
                lists:sublist(Stack, length(Stack)-1)],
-    [{parent_ref(ParentClass, ParentData, Nth), Class, Data} ||
-        {{Class, Nth, Data}, {ParentClass, _PNth, ParentData}}
+    [{parent_ref(ParentClass, ParentData, Nth), Class, ds_stats:get_count(Stats)}
+     || {{Class, Nth, {Stats,_Ext}}, {ParentClass, _PNth, ParentData}}
             <- lists:zip(Stack, Shifted)].
 
 %% Look up the attributes for the Nth child
@@ -259,8 +262,10 @@ child_stack(Zipper, true = _IsGenericType) ->
     [{Field, Attr, Type, Count} || {{Field, Attr}, {Type, Count}} <- AttChList].
 
 child_list_with_stats(Zipper) ->
-    ChildList = ds_zipper:child_list(Zipper),
-    [{Class, ds_stats:get_count(Stats)} || {Class, {Stats,_Ext}} <- ChildList].
+    TransFun = fun({Class, {Stats,_Ext},_ChildL}) ->
+                       {Class, ds_stats:get_count(Stats)}
+               end,
+    ds_zipper:child_list(Zipper, TransFun).
 
 setup_child_list_cols(LC, false = _IsGenericType) ->
     delete_items_and_cols(LC),
@@ -353,19 +358,13 @@ add_stack(LC, [{Type, Count}|Rest], DC, Acc0, N) ->
     TypeStr = ds_types:type_to_string(Type),
     CountStr = ds_utils:integer_to_sigfig(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
-    wxListCtrl:insertItem(LC, N, ""),
-    wxListCtrl:setItem(LC, N, 0, TypeStr),
-    wxListCtrl:setItem(LC, N, 1, CountStr),
+    lc_add_row(LC, N, [TypeStr, CountStr]),
     add_stack(LC, Rest, DC, Acc, N+1);
-add_stack(LC, [{ParentRef, Type, Data}|Rest], DC, Acc0, N) ->
+add_stack(LC, [{ParentRef, Type, Count}|Rest], DC, Acc0, N) ->
     TypeStr = ParentRef ++ ds_types:type_to_string(Type),
-    {Stats,_Ext} = Data,
-    Count = ds_stats:get_count(Stats),
     CountStr = ds_utils:integer_to_sigfig(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
-    wxListCtrl:insertItem(LC, N, ""),
-    wxListCtrl:setItem(LC, N, 0, TypeStr),
-    wxListCtrl:setItem(LC, N, 1, CountStr),
+    lc_add_row(LC, N, [TypeStr, CountStr]),
     add_stack(LC, Rest, DC, Acc, N+1);
 add_stack(LC, [{No, Attribute, Type, Count}|Rest], DC, Acc0, N) ->
     NoStr = integer_to_list(No),
@@ -373,11 +372,7 @@ add_stack(LC, [{No, Attribute, Type, Count}|Rest], DC, Acc0, N) ->
     CountStr = ds_utils:integer_to_sigfig(Count),
     TextWidths = text_widths(DC, [NoStr, Attribute, TypeStr, CountStr]),
     Acc = fold_widths(TextWidths, Acc0),
-    wxListCtrl:insertItem(LC, N, ""),
-    wxListCtrl:setItem(LC, N, 0, NoStr),
-    wxListCtrl:setItem(LC, N, 1, Attribute),
-    wxListCtrl:setItem(LC, N, 2, TypeStr),
-    wxListCtrl:setItem(LC, N, 3, CountStr),
+    lc_add_row(LC, N, [NoStr, Attribute, TypeStr, CountStr]),
     add_stack(LC, Rest, DC, Acc, N+1).
 
 text_widths(DC, Cols) ->
@@ -392,6 +387,12 @@ text_width(DC, Str) ->
 fold_widths(Ws, []) -> Ws;
 fold_widths(Ws, Acc) ->
     lists:map(fun({W, Aw}) -> max(W, Aw) end, lists:zip(Ws, Acc)).
+
+lc_add_row(LC, N, Items) ->
+    wxListCtrl:insertItem(LC, N, ""),
+    ItemsCols = lists:zip(Items, lists:seq(0, length(Items)-1)),
+    [wxListCtrl:setItem(LC, N, Col, Item) || {Item, Col} <- ItemsCols],
+    ok.
 
 load_zipper(Filename) ->
     {ok, Bin} = file:read_file(Filename),

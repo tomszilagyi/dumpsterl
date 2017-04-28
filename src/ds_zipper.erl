@@ -6,7 +6,7 @@
 %% inspired by http://ferd.ca/yet-another-article-on-zippers.html
 
 -export([ from_tree/1
-        , class/1, data/1, stack/1, child_list/1
+        , class/1, data/1, stack/1, stack/2, child_list/1, child_list/2
         , left/1, right/1, children/1, nth_child/2, parent/1, nth_parent/2]).
 
 -type zlist(A) :: {Left::list(A), Right::list(A)}.
@@ -27,18 +27,28 @@ class({_Thread, {_Left, [{Class,_Data, _Children} | _Right]}}) -> Class.
 data({_Thread, {_Left, [{_Class, Data, _Children} | _Right]}}) -> Data.
 
 %% Get the stack of classes up to and including the current one
-stack({Thread, {Left, [{Class, Data, _Children} | _Right]}}) ->
-    Nth = length(Left) + 1, %% We are the Nth child of our parent
-    stack(Thread, [{Class, Nth, Data}]).
+stack(Zipper) ->
+    stack(Zipper, fun(TreeNode, NthChild) -> {TreeNode, NthChild} end).
 
-stack([], Acc) -> Acc;
-stack([{L,[{Class, Data}|_R]}|Rest], Acc) ->
-    Nth = length(L) + 1, %% We are the Nth child of our parent
-    stack(Rest, [{Class, Nth, Data}|Acc]).
+%% TransformFun: fun(TreeNode, NthChild) -> StackItem ok.
+stack(Zipper, TransformFun) ->
+    stack(Zipper, TransformFun, []).
+
+stack({[], {Left, [TreeNode|_Right]}}, TransformFun, Acc) ->
+    Nth = length(Left) + 1, %% We are the Nth child of our parent
+    [TransformFun(TreeNode, Nth)|Acc];
+stack({_Thread, {Left, [TreeNode|_Right]}}=Zipper, TransformFun, Acc) ->
+    Nth = length(Left) + 1, %% We are the Nth child of our parent
+    stack(parent(Zipper), TransformFun, [TransformFun(TreeNode, Nth)|Acc]).
 
 %% Get the list of classes of children nodes below the current one
-child_list({_Thread, {_L, [{_Class, _Data, {LeftChi, RightChi}}|_R]}}) ->
-    [{Class, Data} || {Class, Data, _Chi} <- lists:reverse(LeftChi) ++ RightChi].
+child_list(Zipper) ->
+    child_list(Zipper, fun(TreeNode) -> TreeNode end).
+
+%% TransformFun: fun(TreeNode) -> ListItem ok.
+child_list({_Thread, {_L, [{_Class, _Data, {LeftChi, RightChi}}|_R]}},
+           TransformFun) ->
+    [TransformFun(TreeNode) || TreeNode <- lists:reverse(LeftChi) ++ RightChi].
 
 %% Move to the left of the current level
 -spec left(zntree()) -> zntree().
@@ -55,7 +65,7 @@ nth_right(Tree, 0) -> Tree;
 nth_right(Tree, N) -> nth_right(right(Tree), N-1).
 
 %% Get current position index among current level nodes
-pos({_Thread, {L, [{_Class, _Data, _Children}|_R]}}) -> length(L).
+pos({_Thread, {L, [_TreeNode|_R]}}) -> length(L).
 
 %% Go down one level to the children of the current node
 -spec children(zntree()) -> zntree().
