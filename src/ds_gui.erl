@@ -195,7 +195,8 @@ update_gui(#state{lc_stack=LC_Stack, lc_children=LC_Children,
                   text_children=TextChildren, zipper=Zipper} = State0) ->
     wxListCtrl:deleteAllItems(LC_Stack),
     StackTransFun = fun({Class, Data,_ChildL}, NthChild) ->
-                            {Class, NthChild, Data}
+                            TypeStr = ds_types:type_to_string(Class),
+                            {Class, TypeStr, NthChild, Data}
                     end,
     Stack0 = ds_zipper:stack(Zipper, StackTransFun),
     Stack = stack_with_parent_refs(Stack0),
@@ -217,9 +218,8 @@ update_report(#state{report_cfg=ReportCfg,
                      report_html_win=ReportHtmlWin,
                      report_scroll_pos=ScrollPos,
                      zipper=Zipper} = State) ->
-    Class = ds_zipper:class(Zipper),
-    Data = ds_zipper:data(Zipper),
-    Page = ds_reports:report_page({Class, Data}, ReportCfg),
+    Tree = ds_zipper:to_tree(Zipper),
+    Page = ds_reports:report_page(Tree, ReportCfg),
     wxHtmlWindow:setPage(ReportHtmlWin, Page),
     scrolled_win_set_pos(ReportHtmlWin, ScrollPos),
     State.
@@ -227,12 +227,15 @@ update_report(#state{report_cfg=ReportCfg,
 scrolled_win_set_pos(Win, {Px, Py}) ->
     wxScrolledWindow:scroll(Win, Px, Py).
 
-%% Enrich the stack items with parent refs for display purposes
+%% Produce a stack of {TypeStr, Count} with the type strings
+%% enriched with parent refs
 stack_with_parent_refs(Stack) ->
-    Shifted = [{undefined, undefined, undefined} |
+    Shifted = [{undefined, undefined, undefined, undefined} |
                lists:sublist(Stack, length(Stack)-1)],
-    [{parent_ref(ParentClass, ParentData, Nth), Class, ds_stats:get_count(Stats)}
-     || {{Class, Nth, {Stats,_Ext}}, {ParentClass, _PNth, ParentData}}
+    [{parent_ref(ParentClass, ParentData, Nth) ++ TypeStr,
+      ds_stats:get_count(Stats)}
+     || {{_Class, TypeStr, Nth, {Stats,_Ext}},
+         {ParentClass,_ParentTypeStr,_ParentNth, ParentData}}
             <- lists:zip(Stack, Shifted)].
 
 %% Look up the attributes for the Nth child
@@ -259,11 +262,13 @@ child_stack(Zipper, true = _IsGenericType) ->
     ChildList = child_list_with_stats(Zipper),
     true = length(Attributes) == length(ChildList),
     AttChList = lists:zip(Attributes, ChildList),
-    [{Field, Attr, Type, Count} || {{Field, Attr}, {Type, Count}} <- AttChList].
+    [{Field, Attr, TypeStr, Count}
+     || {{Field, Attr}, {TypeStr, Count}} <- AttChList].
 
 child_list_with_stats(Zipper) ->
     TransFun = fun({Class, {Stats,_Ext},_ChildL}) ->
-                       {Class, ds_stats:get_count(Stats)}
+                       TypeStr = ds_types:type_to_string(Class),
+                       {TypeStr, ds_stats:get_count(Stats)}
                end,
     ds_zipper:child_list(Zipper, TransFun).
 
@@ -354,21 +359,13 @@ add_stack(LC, Data) ->
 add_stack(_LC, [], DC, Acc,_N) ->
     wxWindowDC:destroy(DC),
     Acc;
-add_stack(LC, [{Type, Count}|Rest], DC, Acc0, N) ->
-    TypeStr = ds_types:type_to_string(Type),
+add_stack(LC, [{TypeStr, Count}|Rest], DC, Acc0, N) ->
     CountStr = ds_utils:integer_to_sigfig(Count),
     Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
     lc_add_row(LC, N, [TypeStr, CountStr]),
     add_stack(LC, Rest, DC, Acc, N+1);
-add_stack(LC, [{ParentRef, Type, Count}|Rest], DC, Acc0, N) ->
-    TypeStr = ParentRef ++ ds_types:type_to_string(Type),
-    CountStr = ds_utils:integer_to_sigfig(Count),
-    Acc = fold_widths(text_widths(DC, [TypeStr, CountStr]), Acc0),
-    lc_add_row(LC, N, [TypeStr, CountStr]),
-    add_stack(LC, Rest, DC, Acc, N+1);
-add_stack(LC, [{No, Attribute, Type, Count}|Rest], DC, Acc0, N) ->
+add_stack(LC, [{No, Attribute, TypeStr, Count}|Rest], DC, Acc0, N) ->
     NoStr = integer_to_list(No),
-    TypeStr = ds_types:type_to_string(Type),
     CountStr = ds_utils:integer_to_sigfig(Count),
     TextWidths = text_widths(DC, [NoStr, Attribute, TypeStr, CountStr]),
     Acc = fold_widths(TextWidths, Acc0),

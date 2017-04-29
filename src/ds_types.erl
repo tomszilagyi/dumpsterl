@@ -4,6 +4,8 @@
 
 -export([ kind/1
         , type_to_string/1
+        , spec_to_form/1
+        , pp_spec/1
         , attributes/2
         , attribute_to_string/2
         , subtype/2
@@ -54,6 +56,74 @@ type_to_string({tuple, Size}) ->
 type_to_string(Type) ->
     io_lib:format("~p", [Type]).
 
+%% Pretty-print a spec (multi-line, full expansion)
+%% by converting it to an Erlang abstract type definition form
+%% and using the Erlang pretty-printer on the result.
+pp_spec(Spec) ->
+    Str0 = lists:flatten(erl_pp:attribute(spec_to_form(Spec),
+                                          [{encoding, utf8}])),
+    "-type t() ::" ++ Str1 = Str0,
+    Str2 = string:strip(Str1, right, $\n),
+    Str3 = "            " ++ string:strip(Str2, right, $.),
+    [First|Rest] = string:tokens(Str3, "\n"),
+    Lines = case string:strip(First, both, $ ) of
+                "" -> Rest;
+                _  -> [First|Rest]
+            end,
+    StripCount = lists:min([string:span(L, " ") || L <- Lines]),
+    string:join([string:substr(L, 1 + StripCount) || L <- Lines], "\n").
+
+%% Convert a spec to an Erlang abstract type definition form
+spec_to_form(Spec) ->
+    {attribute, 1, type, {t, spec_to_form_1(Spec), []}}.
+
+spec_to_form_1({term,_Data, []}) ->
+    {type, 1, term, []};
+spec_to_form_1({AbstractType,_Data, Children})
+  when AbstractType =:= term;
+       AbstractType =:= tuple;
+       AbstractType =:= list ->
+    {type, 1, union, spec_flatten_union([spec_to_form_1(Ch) || Ch <- Children])};
+spec_to_form_1({nonempty_list,_Data, Children}) ->
+    {type, 1, list, [spec_to_form_1(Ch) || Ch <- Children]};
+spec_to_form_1({improper_list,_Data, Children}) ->
+    {type, 1, improper_list, [spec_to_form_1(Ch) || Ch <- Children]};
+spec_to_form_1({{tuple,_Size},_Data, Children}) ->
+    {type, 1, tuple, [spec_to_form_1(Ch) || Ch <- Children]};
+spec_to_form_1({map,_Data,_Children}) ->
+    {type, 1, map, any}; %% TODO
+spec_to_form_1({<<>>,_Data,_Children}) ->
+    {type, 1, binary, [{integer, 1, 0}, {integer, 1, 0}]};
+spec_to_form_1({0,_Data,_Children}) ->
+    {integer, 1, 0};
+spec_to_form_1({{},_Data,_Children}) ->
+    {type, 1, tuple, []};
+spec_to_form_1({[],_Data,_Children}) ->
+    {type, 1, nil, []};
+spec_to_form_1({{'fun',_Arity},_Data,_Children}) ->
+    {type, 1, 'fun', []};
+spec_to_form_1({{record,{RecName, RecSize}}, {_Stats,Ext}, Children}) ->
+    Ns = lists:seq(2, RecSize),
+    Attributes =
+        case Ext of
+            [{Attrs,_Locations}|_] -> [A || A <- Attrs];
+            [] -> [list_to_atom("field" ++ integer_to_list(N)) || N <- Ns]
+        end,
+    AttrChL = lists:zip(Attributes, Children),
+    FieldSpecL = [{type,1,field_type,
+                   [{atom,1,Attr},
+                    spec_to_form_1(Ch)]} || {Attr, Ch} <- AttrChL],
+    {type,1,record,[{atom,1,RecName} | FieldSpecL]};
+spec_to_form_1({Class,_Data,_Children}) ->
+    {type, 1, Class, []}.
+
+%% get rid of nested unions
+spec_flatten_union(SpecL) ->
+    lists:flatmap(fun({type, 1, union, SL}) -> SL;
+                     (T) -> [T]
+                  end, SpecL).
+
+
 %% For generic types, this function returns a list of attributes.
 %% The list contains {No, Attribute} tuples, where No is an integer
 %% and Attribute is a (possibly empty) string.
@@ -79,6 +149,8 @@ attributes(improper_list,_Data) ->
     [{1, "items"}, {2, "tail"}].
 
 %% Convert attribute to a string representing it in a GUI.
+attribute_to_string({record, {_RecName,_RecSize}}, {No, ""}) ->
+    io_lib:format("E~B", [No]);
 attribute_to_string({record, {RecName,_RecSize}}, {No, Attribute}) ->
     io_lib:format("E~B #~s.~s", [No, RecName, Attribute]);
 attribute_to_string({tuple,_Size}, {No,_Attribute}) ->
@@ -370,5 +442,98 @@ ext_improper_list_test() ->
 
     E9 = ext_join(C, E4, E8),
     ?assertEqual([{1,4}, {2,2}, {3,2}], E9).
+
+form_test_spec() ->
+    {term, data,
+     [{atom, data, []},
+      {pos_integer, data, []},
+      {[], data, []},
+      {<<>>, data, []},
+      {{}, data, []},
+      {nonempty_list, data,
+       [{{tuple,2}, data,
+         [{atom, data, []},
+          {0, data, []}]}]},
+      {improper_list, data,
+       [{term, data,
+         [{atom, data, []},
+          {float, data, []}]},
+        {atom, data, []}]},
+      {map, data, []},
+      {{record, {widget1,4}}, {stats, []},
+       [{number, data, []},
+        {atom, data, []},
+        {byte, data, []}]},
+      {{record, {widget2,4}},
+       {stats, [{[count, type, status],
+                 attr_source_locations}]},
+       [{number, data, []},
+        {atom, data, []},
+        {byte, data, []}]},
+      {tuple, data,
+       [{{tuple,2}, data,
+         [{atom, data, []},
+          {0, data, []}]},
+        {{tuple,3}, data,
+         [{atom, data, []},
+          {0, data, []},
+          {float, data, []}]}]}]}.
+
+spec_to_form_test() ->
+    ?assertEqual(
+       {attribute,1,type,
+        {t,
+         {type,1,union,
+          [{type,1,atom,[]},
+           {type,1,pos_integer,[]},
+           {type,1,nil,[]},
+           {type,1,binary,[{integer,1,0},{integer,1,0}]},
+           {type,1,tuple,[]},
+           {type,1,list,
+            [{type,1,tuple,
+              [{type,1,atom,[]},
+               {integer,1,0}]}]},
+           {type,1,improper_list,
+            [{type,1,union,
+              [{type,1,atom,[]},
+               {type,1,float,[]}]},
+             {type,1,atom,[]}]},
+           {type,1,map,any},
+           {type,1,record,
+            [{atom,1,widget1},
+             {type,1,field_type,[{atom,1,field2},{type,1,number,[]}]},
+             {type,1,field_type,[{atom,1,field3},{type,1,atom,[]}]},
+             {type,1,field_type,[{atom,1,field4},{type,1,byte,[]}]}]},
+           {type,1,record,
+            [{atom,1,widget2},
+             {type,1,field_type,[{atom,1,count},{type,1,number,[]}]},
+             {type,1,field_type,[{atom,1,type},{type,1,atom,[]}]},
+             {type,1,field_type,[{atom,1,status},{type,1,byte,[]}]}]},
+           {type,1,tuple,[{type,1,atom,[]},{integer,1,0}]},
+           {type,1,tuple,
+            [{type,1,atom,[]},{integer,1,0},{type,1,float,[]}]}]},
+         []}},
+       spec_to_form(form_test_spec())).
+
+pp_spec_test() ->
+    ?assertEqual("term()", pp_spec(ds:new())),
+    ?assertEqual(
+       "  atom()\n"
+       "| pos_integer()\n"
+       "| []\n"
+       "| <<>>\n"
+       "| {}\n"
+       "| [{atom(), 0}]\n"
+       "| improper_list(atom() | float(), atom())\n"
+       "| map()\n"
+       "| #widget1{field2 :: number(),\n"
+       "           field3 :: atom(),\n"
+       "           field4 :: byte()}\n"
+       "| #widget2{count :: number(),\n"
+       "           type :: atom(),\n"
+       "           status :: byte()}\n"
+       "| {atom(), 0}\n"
+       "| {atom(), 0, float()}",
+       pp_spec(form_test_spec())).
 
 -endif.

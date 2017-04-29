@@ -24,7 +24,7 @@
 
 -define(IMAGE_GC_TIMEOUT, 5000).
 
-report_page({Class, {Stats, Ext}}, ReportCfg) ->
+report_page({Class, {Stats, Ext},_Children}=Spec, ReportCfg) ->
     MainTable = main_table(Stats, ReportCfg),
     Samples = case Class of
                   atom -> Ext; % use exhaustive dict of values
@@ -40,7 +40,9 @@ report_page({Class, {Stats, Ext}}, ReportCfg) ->
                      {vlink, ?COLOR_LINK}],
               [{h3, [], [{str, ds_types:type_to_string(Class)}]},
                {font, [{size, "-1"}],
-                [MainTable, PtsTable,
+                [{code, [], [{str, ds_types:pp_spec(Spec)}]},
+                 br, br, br,
+                 MainTable, PtsTable,
                  report_ext(Class, Ext, ReportCfg)]}]}]},
     html(Page).
 
@@ -412,7 +414,7 @@ invert_dir(descending) -> ascending.
 %% Special 'terminal' tags {raw, Str}, {str, Str} and {term, Term}
 %% produce direct output with different degrees of processing.
 html({raw, Str}) -> Str;
-html({str, Str}) -> html_encode(Str);
+html({str, Str}) -> nl_encode(html_encode(Str));
 html({term, Term}) ->
     RawStr = io_lib:format("~80tp", [Term]),
     Str = nl_encode(linewrap(html_encode(RawStr), 82)),

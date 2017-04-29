@@ -116,6 +116,8 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
  - help listing/browsing available tables
  - show attributes to help choosing the right spec
  - support syntax to enter complex field specs
+ - use tab completion with io:get_line
+       see: io:setopts, {expand_fun, expand_fun()}
 *** DONE save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - the progress information (total items traversed so far). May be
@@ -177,7 +179,27 @@ not indicate that each individual list is either a list of bytes or a
 list of tuples. It would be better(?) if the nonempty_list was
 subclassed further for each subset of types encountered.
 
-*** TODO Type labeling / shorthand descriptions / reductions
+*** DONE Type conversion to Erlang abstract form
+
+This ensures compatibility with the Erlang type system and facilitates
+the usage of dumpsterl spec results by third party Erlang analysis tools.
+
+Implemented via
+- ds_types:spec_to_form/1
+- ds_types:pp_spec/1
+
+In the shell, test abstract forms of types with this one-liner
+(example shown for <<>>):
+> f(Toks), {ok, Toks, _} = erl_scan:string("-type alma() :: <<>>."),
+  f(Form), {ok, Form} = erl_parse:parse_form(Toks), Form.
+
+*** TODO Type conversion small enhancements
+- records without attributes: treat them as tuples
+- atoms with only a few values: generate a union of concrete values
+- maps: create a spec for the key and value types
+    NB. value spec is a join of all children; joining must be done
+    before the compaction on load!
+*** TODO Type reductions
 
 The raw end result of the probing stage will reflect the core Erlang
 types (enriched with record information) found in the data.

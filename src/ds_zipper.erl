@@ -6,7 +6,8 @@
 %% inspired by http://ferd.ca/yet-another-article-on-zippers.html
 
 -export([ from_tree/1
-        , class/1, data/1, stack/1, stack/2, child_list/1, child_list/2
+        , to_tree/1, class/1, data/1
+        , stack/1, stack/2, child_list/1, child_list/2
         , left/1, right/1, children/1, nth_child/2, parent/1, nth_parent/2]).
 
 -type zlist(A) :: {Left::list(A), Right::list(A)}.
@@ -22,9 +23,15 @@ ft([]) -> [];
 ft([{Class, Data, Children}|R]) ->
     [{Class, Data, {[], ft(Children)}}|ft(R)].
 
+%% Return the (sub)tree from the current position of the zipper
+to_tree({_Thread, {_Left, [TreeNode|_Right]}}) -> tree(TreeNode).
+
+tree({Class, Data, {ChL,ChR}}) ->
+    {Class, Data, [tree(Ch) || Ch <- lists:reverse(ChL)++ChR]}.
+
 %% Extract the node's values from the current tree position
-class({_Thread, {_Left, [{Class,_Data, _Children} | _Right]}}) -> Class.
-data({_Thread, {_Left, [{_Class, Data, _Children} | _Right]}}) -> Data.
+class({_Thread, {_Left, [{Class,_Data, _ChZ} | _Right]}}) -> Class.
+data({_Thread, {_Left, [{_Class, Data, _ChZ} | _Right]}}) -> Data.
 
 %% Get the stack of classes up to and including the current one
 stack(Zipper) ->
@@ -36,19 +43,19 @@ stack(Zipper, TransformFun) ->
 
 stack({[], {Left, [TreeNode|_Right]}}, TransformFun, Acc) ->
     Nth = length(Left) + 1, %% We are the Nth child of our parent
-    [TransformFun(TreeNode, Nth)|Acc];
+    [TransformFun(tree(TreeNode), Nth)|Acc];
 stack({_Thread, {Left, [TreeNode|_Right]}}=Zipper, TransformFun, Acc) ->
     Nth = length(Left) + 1, %% We are the Nth child of our parent
-    stack(parent(Zipper), TransformFun, [TransformFun(TreeNode, Nth)|Acc]).
+    stack(parent(Zipper), TransformFun, [TransformFun(tree(TreeNode), Nth)|Acc]).
 
 %% Get the list of classes of children nodes below the current one
 child_list(Zipper) ->
     child_list(Zipper, fun(TreeNode) -> TreeNode end).
 
 %% TransformFun: fun(TreeNode) -> ListItem ok.
-child_list({_Thread, {_L, [{_Class, _Data, {LeftChi, RightChi}}|_R]}},
+child_list({_Thread, {_L, [{_Class, _Data, {ChL,ChR}}|_R]}},
            TransformFun) ->
-    [TransformFun(TreeNode) || TreeNode <- lists:reverse(LeftChi) ++ RightChi].
+    [TransformFun(tree(TreeNode)) || TreeNode <- lists:reverse(ChL)++ChR].
 
 %% Move to the left of the current level
 -spec left(zntree()) -> zntree().

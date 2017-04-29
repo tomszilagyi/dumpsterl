@@ -5,6 +5,7 @@
 -export([ hash/1
         , index/2
         , integer_to_sigfig/1
+        , join/2
         , timediff_str/1
         ]).
 
@@ -37,6 +38,14 @@ integer_to_sigfig([A,B,C|Rest], []) -> integer_to_sigfig(Rest, [C,B,A]);
 integer_to_sigfig([A,B,C|Rest], Acc) -> integer_to_sigfig(Rest, [C,B,A,$,|Acc]);
 integer_to_sigfig(R, []) -> lists:reverse(R);
 integer_to_sigfig(R, Acc) -> [lists:reverse(R),$,|Acc].
+
+
+%% lists:join implementation (so we can use it also before R19)
+join(_Sep, []) -> [];
+join(Sep, [H|T]) -> join(Sep, T, [H]).
+
+join(_Sep, [], Acc) -> lists:reverse(Acc);
+join(Sep, [H|T], Acc) -> join(Sep, T, [H,Sep|Acc]).
 
 
 %% return a string specifying elapsed time
@@ -77,6 +86,12 @@ integer_to_sigfig_test() ->
     ?assertEqual(   "12,345,678", lists:flatten(integer_to_sigfig(12345678))),
     ?assertEqual(  "123,456,789", lists:flatten(integer_to_sigfig(123456789))),
     ?assertEqual("1,234,567,890", lists:flatten(integer_to_sigfig(1234567890))).
+
+join_test() ->
+    ?assertEqual([], join(x, [])),
+    ?assertEqual([a], join(x, [a])),
+    ?assertEqual([a,x,b], join(x, [a,b])),
+    ?assertEqual([a,x,b,x,c], join(x, [a,b,c])).
 
 timediff_str_test() ->
     ?assertEqual("6.1",
