@@ -60,7 +60,8 @@ update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
     DeltaSinceLastDump = time_diff(LastDumpTS0, EndTS),
     {LastDumpSize, LastDumpTS} =
         if DeltaSinceLastDump > ?DUMP_INTERVAL_MIN ->
-                {dump_acc(P, Acc), EndTS};
+                {_AccWithMeta, DumpSize} = dump_acc(P, Acc),
+                {DumpSize, EndTS};
            true ->
                 {LastDumpSize0, LastDumpTS0}
         end,
@@ -69,19 +70,20 @@ update(#progress{interval=Interval, start_ts=StartTS, last_dump_ts=LastDumpTS0,
     P#progress{last_dump_ts=LastDumpTS, last_dump_size=LastDumpSize}.
 
 final(#progress{count=Count, start_ts=StartTS, last_dump_size=LastDumpSize}=P,
-      Acc) ->
+      Acc0) ->
     EndTS = os:timestamp(),
     print_status(Count, StartTS, EndTS, LastDumpSize),
-    dump_acc(P#progress{end_ts=EndTS}, Acc, true),
+    {Acc, _DumpSize} = dump_acc(P#progress{end_ts=EndTS}, Acc0, true),
     Acc.
 
 %% Dump the accumulated spec if dumpsterl is configured to do dumps.
-%% Return the size of the dump in bytes, or undefined.
+%% Return a tuple {Spec, DumpSize} with the spec enriched with probe metadata,
+%% and the size of the dump in bytes, or undefined.
 dump_acc(Progress, Acc) -> dump_acc(Progress, Acc, false).
 
 dump_acc(Progress, Acc0, Verbose) ->
     case ds_opts:getopt(dump) of
-        false    -> undefined;
+        false    -> {Acc0, undefined};
         Filename ->
             Acc = add_metadata(Progress, Acc0),
             Binary = erlang:term_to_binary(Acc),
@@ -92,7 +94,7 @@ dump_acc(Progress, Acc0, Verbose) ->
                               [ds_utils:integer_to_sigfig(DumpSize), Filename]);
                true -> ok
             end,
-            DumpSize
+            {Acc, DumpSize}
     end.
 
 %% Save metadata about the probe run into the toplevel node's extra data.

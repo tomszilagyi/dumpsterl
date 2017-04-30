@@ -46,9 +46,9 @@
 start_link() ->
     start_link("ds.bin").
 
-start_link(Filename) ->
+start_link(Spec) ->
     Server = wx:new(),
-    {_, _, _, Pid} = wx_object:start_link(?MODULE, [Server, Filename], []),
+    {_, _, _, Pid} = wx_object:start_link(?MODULE, [Server, Spec], []),
     {ok, Pid}.
 
 stop(Pid) ->
@@ -57,10 +57,14 @@ stop(Pid) ->
 init(Config) ->
     wx:batch(fun() -> do_init(Config) end).
 
-do_init([Server, Filename] = Config) ->
-    Zipper = load_zipper(Filename),
-
-    Frame = wxFrame:new(Server, ?wxID_ANY, "Dumpsterl ["++Filename++"]", []),
+do_init([Server, Spec] = Config) ->
+    {Zipper, Meta} = load_spec(Spec),
+    Options = proplists:get_value(options, Meta, []),
+    WinTitle = case proplists:get_value(dump, Options, undefined) of
+                   undefined -> "Dumpsterl";
+                   Filename  -> "Dumpsterl ["++Filename++"]"
+               end,
+    Frame = wxFrame:new(Server, ?wxID_ANY, WinTitle, []),
     Panel = wxPanel:new(Frame, []),
     Sizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(Panel, Sizer),
@@ -391,14 +395,15 @@ lc_add_row(LC, N, Items) ->
     [wxListCtrl:setItem(LC, N, Col, Item) || {Item, Col} <- ItemsCols],
     ok.
 
-load_zipper(Filename) ->
-    {ok, Bin} = file:read_file(Filename),
-    {Tree, Meta} = decode_binary_spec(Bin),
+load_spec({_Class,_Data,_Children}=Tree0) ->
+    {Tree, Meta} = decode_spec(Tree0),
     io:format(user, "Spec metadata: ~p~n", [Meta]),
-    ds_zipper:from_tree(ds:join_up(ds:compact(Tree))).
+    {ds_zipper:from_tree(ds:join_up(ds:compact(Tree))), Meta};
+load_spec(Filename) ->
+    {ok, Bin} = file:read_file(Filename),
+    load_spec(erlang:binary_to_term(Bin)).
 
-decode_binary_spec(Bin) ->
-    {Class, {Stats, MetaExt}, Children} = Tree0 = erlang:binary_to_term(Bin),
+decode_spec({Class, {Stats, MetaExt}, Children} = Tree0) ->
     case MetaExt of
         [{meta, Meta} | Ext] ->
             Tree = {Class, {Stats, Ext}, Children},
