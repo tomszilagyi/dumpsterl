@@ -11,6 +11,7 @@
         , new/1
         , new/2
         , join/2
+        , postproc/1
         , compact/1
         , join_up/1
         ]).
@@ -180,6 +181,10 @@ join_specs(Acc0, [{Class,_Data,_ChildL}=Spec | Rest]) ->
               AccSpec -> lists:keystore(Class, 1, Acc0, join(AccSpec, Spec))
           end,
     join_specs(Acc, Rest).
+
+
+%% Postprocess a raw spec tree to make it ready for consumption by the gui.
+postproc(Spec) -> join_up(compact(Spec)).
 
 %% Compact the tree by cutting unnecessary abstract types
 %% (those having a single child and no terms captured themselves)

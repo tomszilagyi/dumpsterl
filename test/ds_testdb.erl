@@ -4,11 +4,30 @@
 
 -export([ generate/1
         , generate/2
+        , generate/3
+        , generate_ct/1
         , spec/1
         , spec/2
+        , spec/3
+        , spec_ct/1
         , gui/1
         , gui/2
         ]).
+
+%% This module supports manual and automated testing with a synthetically
+%% generated database.
+%%
+%% Manual testing:
+%% - generate a test database with generate/1-3;
+%% - spec it via spec/1-3;
+%% - launch the gui for browsing the spec via gui/1-2.
+%%
+%% Examples (one minimal, one parameterized):
+%% generate(disk_log).          generate(disk_log, mytable, 10000).
+%% spec(disk_log).              spec(disk_log, mytable, [key]).
+%% gui(disk_log).               gui(disk_log, mytable).
+%%
+%% The functions *_ct are entry points for Common Test suites.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -43,23 +62,49 @@
         , model_params
         }).
 
+-define(ATTRS, [{key, #?RECORD.id}, {ts, #?RECORD.create_date}]).
+
+
 generate(Type) -> generate(Type, default_name(Type)).
+
+generate(Type, Tab) -> generate(Type, Tab, ?NUM_RECORDS).
+
+generate(Type, Tab, NRecs) ->
+    generate_ct([{type, Type},
+                 {tab, Tab},
+                 {num_records, NRecs},
+                 {priv_dir, ?DATA_DIR}]).
 
 spec(Type) -> spec(Type, default_name(Type)).
 
-spec(Type, Tab) ->
+spec(Type, Tab) -> spec(Type, Tab, [key, ts]).
+
+spec(Type, Tab, Attrs) ->
+    spec_ct([{type, Type},
+             {tab, Tab},
+             {attributes, Attrs},
+             {priv_dir, ?DATA_DIR}]).
+
+spec_ct(Config) ->
+    Type = proplists:get_value(type, Config),
+    Tab = proplists:get_value(tab, Config, default_name(Type)),
+    Attrs = proplists:get_value(attributes, Config, [key, ts]),
+    PrivDir = proplists:get_value(priv_dir, Config),
+    AttrSpecs = lists:filter(fun({AttrName,_AttrSpec}) ->
+                                     lists:member(AttrName, Attrs)
+                             end, ?ATTRS),
     ds_drv:spec(Type, Tab,
-                {0, [{key, #?RECORD.id}, {ts, #?RECORD.create_date}]},
+                {0, AttrSpecs},
                 [ {limit, infinity}
-                , {dump, dumpfile_name(Type, Tab)}
+                , {dump, dumpfile_name(PrivDir, Type, Tab)}
                 , {progress, 0.5}
                 , {rec_attrs, force}
-                , {mnesia_dir, filename:join(?DATA_DIR, ?MNESIA_DIR)}
+                , {mnesia_dir, filename:join(PrivDir, ?MNESIA_DIR)}
                 ]).
 
 gui(Type) -> gui(Type, default_name(Type)).
 
-gui(Type, Tab) -> ds_gui:start_link(dumpfile_name(Type, Tab)).
+gui(Type, Tab) -> ds_gui:start_link(dumpfile_name(?DATA_DIR, Type, Tab)).
 
 
 default_name(mnesia) ->
@@ -71,15 +116,20 @@ default_name(dets) ->
 default_name(disk_log) ->
     filename:join(?DATA_DIR, lists:concat([?RECORD, ".disk_log"])).
 
-dumpfile_name(mnesia, Tab) -> filename:join(?DATA_DIR, dumpfile_name(Tab));
-dumpfile_name(ets, Tab) -> filename:join(?DATA_DIR, dumpfile_name(Tab));
-dumpfile_name(_Type, Tab) -> dumpfile_name(Tab).
+dumpfile_name(PrivDir, mnesia, Tab) -> filename:join(PrivDir, dumpfile_name(Tab));
+dumpfile_name(PrivDir, ets, Tab) -> filename:join(PrivDir, dumpfile_name(Tab));
+dumpfile_name(_PrivDir,_Type, Tab) -> dumpfile_name(Tab).
 
 dumpfile_name(Tab) -> lists:concat([Tab, ".spec.bin"]).
 
+generate_ct(Config) ->
+    Type = proplists:get_value(type, Config),
+    do_generate_ct(Type, Config).
 
-generate(mnesia, Tab) ->
-    setup_mnesia(),
+do_generate_ct(mnesia=Type, Config) ->
+    Tab = proplists:get_value(tab, Config, default_name(Type)),
+    NRecs = proplists:get_value(num_records, Config, ?NUM_RECORDS),
+    setup_mnesia(Config),
     Exists = lists:member(Tab, mnesia:system_info(tables)),
     if Exists ->
             ?debug("table exists, deleting it"),
@@ -93,9 +143,11 @@ generate(mnesia, Tab) ->
                             , {attributes, record_info(fields, ?RECORD)}
                             , {disc_copies, [node()]}
                             ]),
-    populate(mnesia, Tab),
+    populate(Type, Tab, NRecs),
     Tab;
-generate(ets, Tab) ->
+do_generate_ct(ets=Type, Config) ->
+    Tab = proplists:get_value(tab, Config, default_name(Type)),
+    NRecs = proplists:get_value(num_records, Config, ?NUM_RECORDS),
     Exists = lists:member(Tab, ets:all()),
     if Exists ->
             ?debug("table exists, deleting it"),
@@ -103,9 +155,11 @@ generate(ets, Tab) ->
        true   -> ok
     end,
     Tid = ets:new(Tab, [public, named_table, {keypos, #?RECORD.id}]),
-    populate(ets, Tid),
+    populate(Type, Tid, NRecs),
     Tid;
-generate(dets, DetsFile) ->
+do_generate_ct(dets=Type, Config) ->
+    DetsFile = proplists:get_value(tab, Config, default_name(Type)),
+    NRecs = proplists:get_value(num_records, Config, ?NUM_RECORDS),
     ok = filelib:ensure_dir(DetsFile),
     Exists = filelib:is_regular(DetsFile),
     if Exists ->
@@ -117,10 +171,12 @@ generate(dets, DetsFile) ->
                                          , {keypos, #?RECORD.id}
                                          , {type, set}
                                          ]),
-    populate(dets, Dets),
+    populate(Type, Dets, NRecs),
     ok = dets:close(Dets),
     DetsFile;
-generate(disk_log, LogFile) ->
+do_generate_ct(disk_log=Type, Config) ->
+    LogFile = proplists:get_value(tab, Config, default_name(Type)),
+    NRecs = proplists:get_value(num_records, Config, ?NUM_RECORDS),
     ok = filelib:ensure_dir(LogFile),
     Exists = filelib:is_regular(LogFile),
     if Exists ->
@@ -132,14 +188,14 @@ generate(disk_log, LogFile) ->
                               , {file, LogFile}
                               , {mode, read_write}
                               ]),
-    populate(disk_log, Log),
+    populate(Type, Log, NRecs),
     ok = disk_log:close(Log),
     LogFile.
 
-populate(Type, Tid) ->
-    ?debug("populating ~p: ~p with ~B records", [Type, Tid, ?NUM_RECORDS]),
+populate(Type, Tid, NRecs) ->
+    ?debug("populating ~p: ~p with ~B records", [Type, Tid, NRecs]),
     ?RNDINIT_DET,
-    populate(Type, Tid, ?NUM_RECORDS, generator_init()).
+    populate(Type, Tid, NRecs, generator_init()).
 
 populate(_Type, _Tid, 0,_State) -> ok;
 populate(Type, Tid, Count, State0) ->
@@ -171,23 +227,25 @@ add_rec(disk_log, Log, State0) ->
 %% - not running
 %% - running with a database directory other than what we want
 %% - running with our database directory, but without a disk-based schema
-setup_mnesia() ->
-    setup_mnesia(directory),
-    setup_mnesia(running),
-    setup_mnesia(schema),
+setup_mnesia(Config) ->
+    setup_mnesia(Config, directory),
+    setup_mnesia(Config, running),
+    setup_mnesia(Config, schema),
     mnesia:wait_for_tables(mnesia:system_info(tables), infinity).
 
-setup_mnesia(directory) ->
-    AbsMnesiaDir = filename:absname(filename:join(?DATA_DIR, ?MNESIA_DIR)),
+setup_mnesia(Config, directory) ->
+    PrivDir = proplists:get_value(priv_dir, Config),
+    AbsMnesiaDir = filename:absname(filename:join(PrivDir, ?MNESIA_DIR)),
+    ok = filelib:ensure_dir(AbsMnesiaDir),
     case mnesia:system_info(directory) of
         AbsMnesiaDir ->
             ?debug("mnesia db dir is already ~s.", [mnesia:system_info(directory)]);
         _ ->
-            setup_mnesia(stopped),
+            setup_mnesia(Config, stopped),
             application:set_env(mnesia, dir, AbsMnesiaDir),
             ?debug("mnesia db dir set to ~s.", [mnesia:system_info(directory)])
     end;
-setup_mnesia(stopped) ->
+setup_mnesia(_Config, stopped) ->
     case mnesia:system_info(is_running) of
         yes ->
             ?debug("mnesia is running, stopping it."),
@@ -195,7 +253,7 @@ setup_mnesia(stopped) ->
         no ->
             ?debug("mnesia is already stopped.")
     end;
-setup_mnesia(running) ->
+setup_mnesia(_Config, running) ->
     case mnesia:system_info(is_running) of
         no ->
             ?debug("mnesia is not running, starting it."),
@@ -203,15 +261,15 @@ setup_mnesia(running) ->
         yes ->
             ?debug("mnesia is already started.")
     end;
-setup_mnesia(schema) ->
+setup_mnesia(Config, schema) ->
     DiscNodes = [node()],
     case mnesia:table_info(schema, disc_copies) of
         [] ->
             ?debug("mnesia schema not on disc, reinitializing."),
-            setup_mnesia(stopped),
+            setup_mnesia(Config, stopped),
             mnesia:delete_schema(DiscNodes),
             ok = mnesia:create_schema(DiscNodes),
-            setup_mnesia(running);
+            setup_mnesia(Config, running);
         DiscNodes ->
             ?debug("mnesia schema is already on disc.")
     end.

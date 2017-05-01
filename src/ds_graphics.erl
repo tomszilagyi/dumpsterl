@@ -37,12 +37,12 @@ histogram_graph(Attrs, Data) ->
     graph(histogram, MergedAttrs, Data).
 
 %% Attrs0 is a list of attribute tuples of {Key, Value}.
-%% Data is a list of tuples {Value, Count, FirstTs, FirstKey, LastTs, LastKey}
+%% Data is a list of tuples {Value, Count, FirstTs, LastTs}
 %% where *Ts are timestamps in gregorian seconds.
 timestamp_range_graph(Attrs0, Data) ->
     DataSeq = lists:zip(Data, lists:seq(1, length(Data))),
     Rows = [{conv_ts(T1), Seq, conv_ts(T1), conv_ts(T2), value_label(V)} ||
-               {{V,_C, T1,_K1, T2,_K2}, Seq} <- DataSeq],
+               {{V,_C, T1, T2}, Seq} <- DataSeq],
     TsMin = lists:min([element(3, R) || R <- Rows]),
     TsMax = lists:max([element(4, R) || R <- Rows]),
     NRows = length(Rows),
@@ -247,11 +247,11 @@ histogram_graph_test() ->
     end.
 
 timestamp_range_graph_test() ->
-         %% Value Count FirstTs      FirstKey   LastTs       LastKey
-    Data = [{5,      3, 63604195833, 151047710, 63648171560, 393359950},
-            {6,   2941, 63332678758,      7147, 63657273600, 480595070},
-            {8,   1280, 63341232447,     12977, 63647078400, 379945090},
-            {19,  2150, 63297552721,        67, 63657273600, 480218350}],
+         %% Value Count FirstTs      LastTs
+    Data = [{5,      3, 63604195833, 63648171560},
+            {6,   2941, 63332678758, 63657273600},
+            {8,   1280, 63341232447, 63647078400},
+            {19,  2150, 63297552721, 63657273600}],
     try
         PngFile = timestamp_range_graph([], Data),
         ok = file:delete(PngFile)

@@ -11,5 +11,6 @@ doc/stylesheet.css
 doc/*.html
 doc/*.pdf
 include/config.hrl
+logs
 test/data
 test/*.beam

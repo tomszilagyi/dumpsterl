@@ -60,41 +60,54 @@ main_table(Stats,_ReportCfg) ->
                  {td, [], [{str, CardStr}]}]}]}].
 
 pts_samples_table(Pts, Samples, ReportCfg) ->
-    AttrCols = tk_attrs_present(Pts) orelse tk_attrs_present(Samples),
-    Cols = case AttrCols of
-               true  -> 6;
-               false -> 2
+    Attrs = tk_attrs_present(Pts ++ Samples),
+    Cols = case Attrs of
+               [key,ts] -> 6;
+               [key]    -> 4;
+               [ts]     -> 4;
+               []       -> 2
            end,
     [{table, [{width, "100%"}, {cellspacing, 0}],
       [table_section("Extremes"),
-       [pt_table(Pt, AttrCols, Cols, ReportCfg) || Pt <- Pts],
+       [pt_table(Pt, Attrs, Cols, ReportCfg) || Pt <- Pts],
        table_section("Samples"),
-       samples_table(Samples, AttrCols, ReportCfg)]},
+       samples_table(Samples, Attrs, ReportCfg)]},
      {table, [{width, "100%"}, {cellspacing, 0}],
-      range_graph(AttrCols, Pts, Samples, ReportCfg)}].
+      range_graph(lists:member(ts, Attrs), Attrs, Pts, Samples, ReportCfg)}].
 
-pt_table({Pt, Value, PVAttrs}, AttrCols, Cols, ReportCfg) ->
-    Data = [value_row({Value, PVAttrs}, AttrCols)],
+pt_table({Pt, Value, PVAttrs}, Attrs, Cols, ReportCfg) ->
+    Data = [value_row({Value, PVAttrs}, Attrs)],
     [{tr, [], [{td, [], []}]},
      {tr, [{bgcolor, ?COLOR_PTHEAD}],
       [{th, [{align, left}, {colspan, Cols}],
         [{term, Pt}]}]},
-     frame(Pt, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg)].
+     frame(Pt, stats_headers(Attrs), Data, fun stats_display_f/1, ReportCfg)].
 
-samples_table(Values, AttrCols, ReportCfg) ->
-    Data = [value_row(V, AttrCols) || V <- Values],
-    frame(samples, stats_headers(AttrCols), Data, fun stats_display_f/1, ReportCfg).
+samples_table(Values, Attrs, ReportCfg) ->
+    Data = [value_row(V, Attrs) || V <- Values],
+    frame(samples, stats_headers(Attrs), Data, fun stats_display_f/1, ReportCfg).
 
-range_graph(false,_Pts,_Samples,_ReportCfg) -> [];
-range_graph(true, Pts, Samples, ReportCfg) ->
+range_graph(false,_Attrs,_Pts,_Samples,_ReportCfg) -> [];
+range_graph(true, Attrs, Pts, Samples, ReportCfg) ->
     AllSamples0 = Samples ++ [{Value, PVAttrs} || {_Pt, Value, PVAttrs} <- Pts],
-    AllSamples1 = [value_row(V, true) || V <- AllSamples0],
-    AllSamples = [Row || {_V,_C, MinTS,_MinK, MaxTS,_MaxK} = Row <- AllSamples1,
-                         MinTS /= undefined, MaxTS /= undefined],
+    AllSamples = [value_row(V, Attrs) || V <- AllSamples0],
     Data0 = lists:usort(AllSamples),
     %% Use the same sorting as selected for samples table:
     Sort = config_lookup(samples, sort, ReportCfg),
-    Data = frame_data(Data0, Sort, fun(T) -> T end),
+    Data1 = frame_data(Data0, Sort, fun(T) -> T end),
+
+    %% Convert the data to {Value, Count, MinTS, MaxTS} if needed
+    %% and filter out any rows without timestamps
+    Data =
+        case Attrs of
+            [key,ts] ->
+                [{V, C, MinTS, MaxTS}
+                 || {V, C, MinTS,_MinKey, MaxTS,_MaxKey} <- Data1,
+                    MinTS /= undefined, MaxTS /= undefined];
+            [ts] ->
+                [Row || {_V,_C, MinTS, MaxTS} = Row <- Data1,
+                        MinTS /= undefined, MaxTS /= undefined]
+        end,
 
     {width, Width} = config_lookup(report, width, ReportCfg),
     PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-40}], %% FIXME
@@ -105,10 +118,18 @@ range_graph(true, Pts, Samples, ReportCfg) ->
       [{td, [{align, left}],
         [{img, [{src, PngFile}], []}]}]}].
 
-value_row({Value, PVAttrs}, false) ->
+value_row({Value, PVAttrs}, []) ->
     Count = ds_pvattrs:get_count(PVAttrs),
     {Value, Count};
-value_row({Value, PVAttrs}, true) ->
+value_row({Value, PVAttrs}, [key]) ->
+    Count = ds_pvattrs:get_count(PVAttrs),
+    {{_MinTS, MinKey}, {_MaxTS, MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
+    {Value, Count, MinKey, MaxKey};
+value_row({Value, PVAttrs}, [ts]) ->
+    Count = ds_pvattrs:get_count(PVAttrs),
+    {{MinTS,_MinKey}, {MaxTS,_MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
+    {Value, Count, MinTS, MaxTS};
+value_row({Value, PVAttrs}, [key,ts]) ->
     Count = ds_pvattrs:get_count(PVAttrs),
     {{MinTS, MinKey}, {MaxTS, MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
     {Value, Count, MinTS, MinKey, MaxTS, MaxKey}.
@@ -116,6 +137,11 @@ value_row({Value, PVAttrs}, true) ->
 stats_display_f({Value, Count}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]}};
+stats_display_f({Value, Count, MinV, MaxV}) ->
+    {{term, Value},
+     {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]},
+     {td, [{align, right}], [blank_if_missing(MinV)]},
+     {td, [{align, right}], [blank_if_equal(MaxV, MinV)]}};
 stats_display_f({Value, Count, MinTS, MinKey, MaxTS, MaxKey}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]},
@@ -130,10 +156,26 @@ blank_if_missing(V)         -> {term, V}.
 blank_if_equal(V, V)    -> {raw, ""};
 blank_if_equal(V,_Vref) -> blank_if_missing(V).
 
-stats_headers(false) ->
+stats_headers([]) ->
     [[{"Value", [{align, left}]},
       {"Count", [{align, right}]}]];
-stats_headers(true) ->
+stats_headers([key]) ->
+    [["", "",
+      {"First", [{align, right}]},
+      {"Last", [{align, right}]}],
+     [{"Value", [{align, left}]},
+      {"Count", [{align, right}]},
+      {"Key", [{align, right}]},
+      {"Key", [{align, right}]}]];
+stats_headers([ts]) ->
+    [["", "",
+      {"First", [{align, right}]},
+      {"Last", [{align, right}]}],
+     [{"Value", [{align, left}]},
+      {"Count", [{align, right}]},
+      {"Timestamp", [{align, right}]},
+      {"Timestamp", [{align, right}]}]];
+stats_headers([key,ts]) ->
     [["", "",
       {"First", [{align, right}]}, {"First", [{align, right}]},
       {"Last", [{align, right}]}, {"Last", [{align, right}]}],
@@ -144,19 +186,33 @@ stats_headers(true) ->
       {"Timestamp", [{align, right}]},
       {"Key", [{align, right}]}]].
 
-%% See if there are any timestamp/key annotations in the dataset.
-%% If there are none, the relevant columns will be omitted.
-tk_attrs_present([]) -> false;
-tk_attrs_present([{_Pt,_Value, PVAttrs}|Rest]) ->
-    tk_attrs_present(PVAttrs, Rest);
-tk_attrs_present([{_Value, PVAttrs}|Rest]) ->
-    tk_attrs_present(PVAttrs, Rest).
+%% See what attributes are present in the dataset.
+%% Return a sorted list:
+%% - [key,ts] if both key and timestamp are present;
+%% - [key]    if only key is present;
+%% - [ts]     if only timestamp is present;
+%% - []       if neither key nor timestamp is present.
+tk_attrs_present(Data) ->
+    tk_attrs_present(Data, []).
 
-tk_attrs_present(PVAttrs, Rest) ->
+tk_attrs_present([], Acc) -> Acc;
+tk_attrs_present([{_Pt,_Value, PVAttrs}|Rest], Acc) ->
+    tk_attrs_present(PVAttrs, Rest, Acc);
+tk_attrs_present([{_Value, PVAttrs}|Rest], Acc) ->
+    tk_attrs_present(PVAttrs, Rest, Acc).
+
+tk_attrs_present(_PVAttrs,_Rest, [key,ts]=Acc) -> Acc;
+tk_attrs_present(PVAttrs, Rest, Acc0) ->
     case ds_pvattrs:get_timespan(PVAttrs) of
         {{undefined, undefined}, {undefined, undefined}} ->
-            tk_attrs_present(Rest);
-        _ -> true
+            tk_attrs_present(Rest, Acc0);
+        {{_TsMin, undefined}, {_TsMax, undefined}} ->
+            tk_attrs_present(Rest, lists:usort([ts|Acc0]));
+        {{undefined, _KeyMin}, {undefined, _KeyMax}} ->
+            tk_attrs_present(Rest, lists:usort([key|Acc0]));
+        {{_TsMin, _KeyMin}, {_TsMax, _KeyMax}} ->
+            tk_attrs_present(Rest, lists:usort([key,ts|Acc0]));
+        _ -> Acc0
     end.
 
 report_ext(_Class, [],_ReportCfg) -> [];
@@ -230,7 +286,7 @@ histogram(Id, Title, Data, ReportCfg) ->
 
 histogram_data_table(false,_Id,_Data,_ReportCfg) -> [];
 histogram_data_table(true, Id, Data, ReportCfg) ->
-    frame(Id, stats_headers(false), Data, fun stats_display_f/1, ReportCfg).
+    frame(Id, stats_headers([]), Data, fun stats_display_f/1, ReportCfg).
 
 bin_histdata(Data, Bins) when length(Data) =< Bins -> Data;
 bin_histdata([{FirstValue,_}|_] = Data, Bins) ->
@@ -312,16 +368,20 @@ frame_header(Id, HeaderSpec0, Sort, EnableSortLinks) ->
 frame_header_cell(Id, {Caption, AttrList}, N, Sort, true) ->
     Link = config_link(Id, sort, N),
     SortCaption = frame_header_caption(Caption, N, Sort),
-    {th, AttrList, [{a, [{href, Link}], [{str, SortCaption}]}]};
+    {th, AttrList, [{a, [{href, Link}], SortCaption}]};
 frame_header_cell(_Id, {Caption, AttrList},_N,_Sort, false) ->
     {th, AttrList, [{str, Caption}]};
 frame_header_cell(Id, Caption, N, Sort, EnableSortLinks) ->
     frame_header_cell(Id, {Caption, []}, N, Sort, EnableSortLinks).
 
-frame_header_caption(Caption, N, {sort, N, ascending}) -> Caption ++ " ↓";
-frame_header_caption(Caption, N, {sort, N, descending}) -> Caption ++ " ↑";
-frame_header_caption(Caption,_N, {sort,_SortColN,_SortDir}) -> Caption;
-frame_header_caption(Caption,_N, false) -> Caption.
+frame_header_caption(Caption, N, {sort, N, ascending}) ->
+    [{str, Caption}, {raw, " &darr;"}]; % arrow down
+frame_header_caption(Caption, N, {sort, N, descending}) ->
+    [{str, Caption}, {raw, " &uarr;"}]; % arrow up
+frame_header_caption(Caption,_N, {sort,_SortColN,_SortDir}) ->
+    [{str, Caption}];
+frame_header_caption(Caption,_N, false) ->
+    [{str, Caption}].
 
 %% Take a list of table rows and set bgcolor attribute on every other
 %% to achieve the striped rows effect.
@@ -394,10 +454,11 @@ config_link(Id, Key, Data) ->
 
 %% Default settings for ReportCfg keys to use in case they are missing.
 config_defaults() ->
-    [ {sort, 1, ascending}
-    , {show_table, false}
+    [ {hist_autobins, false}
     , {logscale_y, false}
-    , {hist_autobins, false}
+    , {show_table, false}
+    , {sort, 1, ascending}
+    , {width, 600}
     ].
 
 invert_dir(ascending) -> descending;
