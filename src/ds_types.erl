@@ -28,25 +28,35 @@
 
 %% Category, or "kind", of type.
 %% Each type belongs to one of three kinds:
-%% - abstract: a type which can be broken into subtypes;
-%% - generic:  a type which is parameterized by further types.
+%% - union:    A type which is, by its nature, a union of subtypes.
+%%             Such a type cannot be described with an atomic name,
+%%             only as a union of other types.
+%%             Does not apply to all types that can be broken down,
+%%             e.g. integer() can be broken into neg_integer() etc, but
+%%             it is not categorized as a union type.
+%% - generic:  A type which is parameterized by further types.
 %%             E.g. a list is really a list of T where T is the type
-%%             of all its elements.
-%%             Generic types include lists, tuples, records.
-%% - leaf:     a leaf type with no further sub-categorization.
+%%             of its elements.
+%%             Generic types include lists, tuples, records and maps.
+%% - ordinary: A type which may or may not be broken into further sub-types.
+%%             Any actual data term is either passed on to one of those
+%%             sub-types, or, if neither of their predicates is true, is
+%%             absorbed by this type.
 %%
-%% For abstract types, the node's SubSpec is a list of subtypes;
+%% For union and ordinary types, the node's SubSpec is a list of subtypes;
 %% for generic types, SubSpec is a list of type specs that map to
-%% the individual type elements. In other words, those are leaf nodes
+%% the individual type elements. In other words, generic types are leaf nodes
 %% from a strict type hierarchy point of view, since their children
 %% belong to another type domain.
+kind(term)          -> union;
+kind(list)          -> union;
+kind(tuple)         -> union;
 kind(nonempty_list) -> generic;
 kind(improper_list) -> generic;
 kind({tuple, _})    -> generic;
 kind({record, _})   -> generic;
 kind(map)           -> generic;
-kind(_T) -> abstract. %% incomplete for now, but we only really care
-%% about the difference between generic and non-generic types.
+kind(_T)            -> ordinary.
 
 %% Convert type to a string representing it in a GUI.
 type_to_string({record, {RecName, RecSize}}) ->
@@ -79,30 +89,34 @@ spec_to_form(Spec) ->
 
 spec_to_form_1({term,_Data, []}) ->
     {type, 1, term, []};
-spec_to_form_1({AbstractType,_Data, Children})
-  when AbstractType =:= term;
-       AbstractType =:= tuple;
-       AbstractType =:= list ->
-    {type, 1, union, spec_flatten_union([spec_to_form_1(Ch) || Ch <- Children])};
-spec_to_form_1({nonempty_list,_Data, Children}) ->
+spec_to_form_1({Type,_Data, Children} = Spec) ->
+    case kind(Type) of
+        union ->
+            ChForms = flatten_union([spec_to_form_1(Ch) || Ch <- Children]),
+            {type, 1, union, ChForms};
+        _ ->
+            spec_to_form_2(Spec)
+    end.
+
+spec_to_form_2({nonempty_list,_Data, Children}) ->
     {type, 1, list, [spec_to_form_1(Ch) || Ch <- Children]};
-spec_to_form_1({improper_list,_Data, Children}) ->
+spec_to_form_2({improper_list,_Data, Children}) ->
     {type, 1, improper_list, [spec_to_form_1(Ch) || Ch <- Children]};
-spec_to_form_1({{tuple,_Size},_Data, Children}) ->
+spec_to_form_2({{tuple,_Size},_Data, Children}) ->
     {type, 1, tuple, [spec_to_form_1(Ch) || Ch <- Children]};
-spec_to_form_1({map,_Data,_Children}) ->
+spec_to_form_2({map,_Data,_Children}) ->
     {type, 1, map, any}; %% TODO
-spec_to_form_1({<<>>,_Data,_Children}) ->
+spec_to_form_2({<<>>,_Data,_Children}) ->
     {type, 1, binary, [{integer, 1, 0}, {integer, 1, 0}]};
-spec_to_form_1({0,_Data,_Children}) ->
+spec_to_form_2({0,_Data,_Children}) ->
     {integer, 1, 0};
-spec_to_form_1({{},_Data,_Children}) ->
+spec_to_form_2({{},_Data,_Children}) ->
     {type, 1, tuple, []};
-spec_to_form_1({[],_Data,_Children}) ->
+spec_to_form_2({[],_Data,_Children}) ->
     {type, 1, nil, []};
-spec_to_form_1({{'fun',_Arity},_Data,_Children}) ->
+spec_to_form_2({{'fun',_Arity},_Data,_Children}) ->
     {type, 1, 'fun', []};
-spec_to_form_1({{record,{RecName, RecSize}}, {_Stats,Ext}, Children}) ->
+spec_to_form_2({{record,{RecName, RecSize}}, {_Stats,Ext}, Children}) ->
     Ns = lists:seq(2, RecSize),
     Attributes =
         case Ext of
@@ -114,11 +128,11 @@ spec_to_form_1({{record,{RecName, RecSize}}, {_Stats,Ext}, Children}) ->
                    [{atom,1,Attr},
                     spec_to_form_1(Ch)]} || {Attr, Ch} <- AttrChL],
     {type,1,record,[{atom,1,RecName} | FieldSpecL]};
-spec_to_form_1({Class,_Data,_Children}) ->
+spec_to_form_2({Class,_Data,_Children}) ->
     {type, 1, Class, []}.
 
 %% get rid of nested unions
-spec_flatten_union(SpecL) ->
+flatten_union(SpecL) ->
     lists:flatmap(fun({type, 1, union, SL}) -> SL;
                      (T) -> [T]
                   end, SpecL).
@@ -200,9 +214,6 @@ subtype(L, list) ->
         true -> improper_list
     end;
 
-subtype(L, nonempty_list) -> {'$elements', L};
-subtype(L, improper_list) -> improper_list(L);
-
 subtype({}, tuple) -> {};
 subtype(T, tuple) ->
     case dyn_record(T) of
@@ -210,9 +221,11 @@ subtype(T, tuple) ->
         false -> {tuple, size(T)}
     end;
 
-%% compound types where we want to recurse on their elements:
+%% generic types where we want to further process their elements:
 subtype(T, {tuple,_N}) -> {'$fields', tuple_to_list(T)};
 subtype(R, {record, {_RecName,_Size}}) -> {'$fields', tl(tuple_to_list(R))};
+subtype(L, nonempty_list) -> {'$elements', L};
+subtype(L, improper_list) -> improper_list(L);
 subtype(M, map) -> subtype_map(M); % separate function for the sake of -ifdef.
 
 subtype(_V, _Class) -> '$null'.
@@ -230,7 +243,6 @@ is_improper(_T) -> true.
 
 improper_list(L) -> improper_list(L, []).
 
-improper_list([], _Acc) -> nonempty_list;
 improper_list([H|T], Acc) -> improper_list(T, [H|Acc]);
 improper_list(T, Acc) -> {'$improper_list', Acc, T}.
 

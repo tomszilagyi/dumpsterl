@@ -21,29 +21,30 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% A data spec is a list of type specs.
-%% It is most often hierarchically nested, hence we have
-%% a hierarchical tree of type classes.
+%% A data spec is represented as a hierarchical tree of
+%% type classes.
 %% Nodes of this tree are represented as tuples:
 %%
 %% {Class, Data, SubSpec}
 %%
 %% - Class is a term (in most cases an atom) describing
 %%   the type this node represents in the type hierarchy.
-%%   Toplevel type examples: integer, atom, list.
+%%
 %% - Data is node-specific data as a tuple:
 %%
 %%   {Stats, Ext}
 %%
-%%   - Stats is a tuple of general statistics data, eg.:
-%%     - an integer count of data items covered by this type class.
+%%   - Stats is an instance of #stats{} with general statistics data, eg.:
+%%     - an integer count of data items captured by this type class
+%%     - an estimator of cardinality (number of different unique values)
+%%     - points of interest (min, max)
 %%     - an even sampling of the data values
 %%   - Ext is class-specific extra/extended data to hold
 %%     further attributes and/or statistics.
 %%
 %% - SubSpec is a list of child nodes. Depending on the kind of type
 %%   denoted by Class, this may be a list of subtypes or in case of
-%%   compound types, a list of specs corresponding to the elements
+%%   generic types, a list of specs corresponding to the elements
 %%   or fields of this type. The exact semantics of SubSpec are left
 %%   up to Class, but the tree is uniformly recursive through SubSpecs.
 
@@ -90,7 +91,7 @@ merge(VA, Class, Spec) ->
         SubSpec -> lists:keystore(Class, 1, Spec, add(VA, SubSpec))
     end.
 
-%% merge the per-field sub-specs of compound types
+%% merge the per-field sub-specs of tuple/record types
 merge_fields({Vs, A}, []) ->
     lists:map(fun(V) -> new(term, {V, A}) end, Vs);
 merge_fields({Vs, A}, SubSpec) ->
@@ -184,7 +185,22 @@ join_specs(Acc0, [{Class,_Data,_ChildL}=Spec | Rest]) ->
 
 
 %% Postprocess a raw spec tree to make it ready for consumption by the gui.
-postproc(Spec) -> join_up(compact(Spec)).
+postproc(Spec) -> sort_count(join_up(compact(Spec))).
+
+%% Rearrange the spec tree so that nodes of non-generic types have their
+%% children sorted by decreasing order of count. This makes the gui nicer.
+sort_count({Class, Data, Children0}) ->
+    Children = [sort_count(Ch) || Ch <- Children0],
+    case ds_types:kind(Class) of
+        generic ->
+            {Class, Data, Children};
+        _ ->
+            {Class, Data, lists:sort(fun sort_count_f/2, Children)}
+    end.
+
+sort_count_f({_Class1, {Stats1,_Ext1},_Ch1},
+             {_Class2, {Stats2,_Ext2},_Ch2}) ->
+    ds_stats:get_count(Stats1) >= ds_stats:get_count(Stats2).
 
 %% Compact the tree by cutting unnecessary abstract types
 %% (those having a single child and no terms captured themselves)

@@ -96,8 +96,11 @@ do_init([Server, Spec] = Config) ->
     TopLeftSizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(TopLeftPanel, TopLeftSizer),
 
-    Text1 = wxStaticText:new(TopLeftPanel, ?wxID_ANY, "Type hierarchy stack", []),
+    Text1 = wxStaticText:new(TopLeftPanel, ?wxID_ANY, " Stack", []),
+    set_window_font_bold(Text1),
+    wxSizer:addSpacer(TopLeftSizer, 3),
     wxSizer:add(TopLeftSizer, Text1, []),
+    wxSizer:addSpacer(TopLeftSizer, 3),
 
     LC_Stack = wxListCtrl:new(TopLeftPanel,
                               [{winid, ?LIST_CTRL_STACK},
@@ -112,7 +115,10 @@ do_init([Server, Spec] = Config) ->
     wxPanel:setSizer(BottomLeftPanel, BottomLeftSizer),
 
     TextChildren = wxStaticText:new(BottomLeftPanel, ?wxID_ANY, "", []),
+    set_window_font_bold(TextChildren),
+    wxSizer:addSpacer(BottomLeftSizer, 3),
     wxSizer:add(BottomLeftSizer, TextChildren, []),
+    wxSizer:addSpacer(BottomLeftSizer, 3),
 
     LC_Children = wxListCtrl:new(BottomLeftPanel,
                                  [{winid, ?LIST_CTRL_CHILDREN},
@@ -272,6 +278,12 @@ set_window_fontsize(Win, ZoomLevel) ->
     wxWindow:layout(Win),
     ok.
 
+set_window_font_bold(Win) ->
+    Font = wxWindow:getFont(Win),
+    wxFont:setWeight(Font, ?wxFONTWEIGHT_BOLD),
+    wxWindow:setFont(Win, Font),
+    ok.
+
 %% Produce a stack of {TypeStr, Count} with the type strings
 %% enriched with parent refs
 stack_with_parent_refs(Stack) ->
@@ -294,9 +306,9 @@ parent_ref(Class, Data, Nth) ->
     end.
 
 set_child_text(Text, false = _IsGenericType) ->
-    wxStaticText:setLabel(Text, "Subtypes:");
+    wxStaticText:setLabel(Text, " Alternatives");
 set_child_text(Text, true = _IsGenericType) ->
-    wxStaticText:setLabel(Text, "Type parameters:").
+    wxStaticText:setLabel(Text, " Attributes").
 
 child_stack(Zipper, false = _IsGenericType) ->
     child_list_with_stats(Zipper);
