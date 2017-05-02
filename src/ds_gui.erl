@@ -24,6 +24,19 @@
 
 -define(SCROLLBAR_WIDTH,    15).
 
+-define(ZOOM_LEVEL_MIN,      0).
+-define(ZOOM_LEVEL_DEFAULT,  2).
+-define(ZOOM_LEVEL_MAX,      7).
+-define(ZOOM_POINT_SIZES,    [ {0, 9}
+                             , {1, 10}
+                             , {2, 11}
+                             , {3, 12}
+                             , {4, 14}
+                             , {5, 16}
+                             , {6, 18}
+                             , {7, 20}
+                             ]).
+
 -record(state,
         { config
         , frame
@@ -41,6 +54,7 @@
         , is_generic_type
         , stack_col_widths
         , children_col_widths
+        , zoom_level
         }).
 
 start_link() ->
@@ -66,6 +80,7 @@ do_init([Server, Spec] = Config) ->
                end,
     Frame = wxFrame:new(Server, ?wxID_ANY, WinTitle, []),
     Panel = wxPanel:new(Frame, []),
+    wxPanel:connect(Panel, char_hook, [{skip, true}]),
     Sizer = wxBoxSizer:new(?wxVERTICAL),
     wxPanel:setSizer(Panel, Sizer),
     Splitter = wxSplitterWindow:new(Panel, []),
@@ -136,8 +151,8 @@ do_init([Server, Spec] = Config) ->
                    text_children=TextChildren,
                    report_html_win=ReportHtmlWin,
                    report_scroll_pos={0,0}, report_cfg=[],
-                   zipper=Zipper},
-    {Frame, update_gui(State)}.
+                   zipper=Zipper, zoom_level=?ZOOM_LEVEL_DEFAULT},
+    {Frame, update_zoom_level(State)}. % NB. includes update_gui/1.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Async Events are handled in handle_event as in handle_info
@@ -166,6 +181,16 @@ handle_event(#wx{event = #wxScrollWin{}},
 	     #state{report_html_win=ReportHtmlWin} = State) ->
     ScrollPos = wxScrolledWindow:getViewStart(ReportHtmlWin),
     {noreply, State#state{report_scroll_pos=ScrollPos}};
+handle_event(#wx{event = #wxKey{controlDown=true, keyCode=$+}},
+             #state{zoom_level = ZoomLevel0} = State) ->
+    ZoomLevel = min(ZoomLevel0 + 1, ?ZOOM_LEVEL_MAX),
+    {noreply, update_zoom_level(State#state{zoom_level = ZoomLevel})};
+handle_event(#wx{event = #wxKey{controlDown=true, keyCode=$-}},
+             #state{zoom_level = ZoomLevel0} = State) ->
+    ZoomLevel = max(?ZOOM_LEVEL_MIN, ZoomLevel0 - 1),
+    {noreply, update_zoom_level(State#state{zoom_level = ZoomLevel})};
+handle_event(#wx{event = #wxKey{}}, State) ->
+    {noreply, State};
 handle_event(#wx{} = Event, State = #state{}) ->
     io:format(user, "Event ~p~n", [Event]),
     {noreply, State}.
@@ -230,6 +255,22 @@ update_report(#state{report_cfg=ReportCfg,
 
 scrolled_win_set_pos(Win, {Px, Py}) ->
     wxScrolledWindow:scroll(Win, Px, Py).
+
+update_zoom_level(#state{panel_main = Panel,
+                         report_cfg = ReportCfg0,
+                         zoom_level = ZoomLevel} = State) ->
+    set_window_fontsize(Panel, ZoomLevel),
+    ReportCfg = ds_reports:config_store(report, {zoom_level, ZoomLevel}, ReportCfg0),
+    update_gui(State#state{report_cfg = ReportCfg}).
+
+set_window_fontsize(Win, ZoomLevel) ->
+    Font = wxWindow:getFont(Win),
+    {_, PointSize} = lists:keyfind(ZoomLevel, 1, ?ZOOM_POINT_SIZES),
+    wxFont:setPointSize(Font, PointSize),
+    wxWindow:setFont(Win, Font),
+    [set_window_fontsize(Ch, ZoomLevel) || Ch <- wxWindow:getChildren(Win)],
+    wxWindow:layout(Win),
+    ok.
 
 %% Produce a stack of {TypeStr, Count} with the type strings
 %% enriched with parent refs

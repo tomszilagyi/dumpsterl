@@ -293,7 +293,7 @@ see them in action.
 
 *** TODO GUI outstanding tasks
 - fix timeline graph with 1 datapoint where StartTs equals EndTs
-- add feature to increase/decrease font size everywhere (Ctrl - +/-)
+- zoom level setting does not affect graphs
 *** GUI toolbars
 **** at the top of spec window
 - show probe metadata

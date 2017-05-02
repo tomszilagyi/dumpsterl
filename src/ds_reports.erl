@@ -25,6 +25,11 @@
 -define(IMAGE_GC_TIMEOUT, 5000).
 
 report_page({Class, {Stats, Ext},_Children}=Spec, ReportCfg) ->
+    %% NB. we use the zoom level as font size here, but this is only an
+    %% incidental detail. They are conceptually different; they just happen
+    %% to be mapped (for now) by the identity function.
+    {zoom_level, FontSize} = config_lookup(report, zoom_level, ReportCfg),
+
     MainTable = main_table(Stats, ReportCfg),
     Samples = case Class of
                   atom -> Ext; % use exhaustive dict of values
@@ -38,10 +43,12 @@ report_page({Class, {Stats, Ext},_Children}=Spec, ReportCfg) ->
              {body, [{link, ?COLOR_LINK},
                      {alink, ?COLOR_LINK},
                      {vlink, ?COLOR_LINK}],
-              [{h3, [], [{str, ds_types:type_to_string(Class)}]},
-               {font, [{size, "-1"}],
-                [{code, [], [{str, ds_types:pp_spec(Spec)}]},
-                 br, br, br,
+              [{font, [{size, FontSize}],
+                [{font, [{size, "+2"}],
+                  [{b, [], [{str, ds_types:type_to_string(Class)}]}]},
+                 br, br,
+                 {code, [], [{str, ds_types:pp_spec(Spec)}]},
+                 br, br,
                  MainTable, PtsTable,
                  report_ext(Class, Ext, ReportCfg)]}]}]},
     html(Page).
@@ -52,12 +59,12 @@ main_table(Stats,_ReportCfg) ->
     CardStr = io_lib:format("~s ± ~s",
                             [ds_utils:integer_to_sigfig(CardEstimate),
                              ds_utils:integer_to_sigfig(CardEstError)]),
-    [{font, [{size, "+2"}], [{str, "Properties"}]},
-     {table, [{cellspacing, 0}],
+    {table, [{cellspacing, 0}],
+     [table_section("Properties"),
       [{tr, [], [{td, [{align, right}], [{str, "Count: "}]},
                  {td, [], [{str, CountStr}]}]},
        {tr, [], [{td, [{align, right}], [{str, "Cardinality: "}]},
-                 {td, [], [{str, CardStr}]}]}]}].
+                 {td, [], [{str, CardStr}]}]}]]}.
 
 pts_samples_table(Pts, Samples, ReportCfg) ->
     Attrs = tk_attrs_present(Pts ++ Samples),
@@ -454,7 +461,8 @@ config_link(Id, Key, Data) ->
 
 %% Default settings for ReportCfg keys to use in case they are missing.
 config_defaults() ->
-    [ {hist_autobins, false}
+    [ {zoom_level, 2}
+    , {hist_autobins, false}
     , {logscale_y, false}
     , {show_table, false}
     , {sort, 1, ascending}
