@@ -11,7 +11,8 @@ function deps() {
     cat ../src/$1.erl | \
         grep -v "^[[:space:]]*%" | \
         sed 's|%.*$||g' | \
-        grep -Eo "ds[a-z_]*:" | \
+        grep -Eo "(^|[^[:alpha:]])ds[a-z_]*:" | \
+        sed 's|^.ds|ds|g' | \
         cut -d ':' -f 1 | \
         sort | \
         uniq
