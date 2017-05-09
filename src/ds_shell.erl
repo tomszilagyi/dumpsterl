@@ -92,8 +92,8 @@ eval_cmd("run\n",
                 options = Options} = State) ->
     FieldSpec = {Field, Attrs},
     RecAttrs = ds_records:get_attrs(),
-    {ProbePid, ProbeMon} = ds_drv:start(Type, Table, FieldSpec, Options,
-                                        RecAttrs, get_statusline_pid()),
+    {ProbePid, ProbeMon} = ds_probe:start(Type, Table, FieldSpec, Options,
+                                          RecAttrs, get_statusline_pid()),
     State#state{probe_pid = ProbePid, probe_monitor = ProbeMon};
 eval_cmd("stop\n", State) -> stop_probe(State);
 eval_cmd("help\n", State) -> help(State);

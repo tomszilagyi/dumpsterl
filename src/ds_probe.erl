@@ -1,5 +1,5 @@
 %% -*- coding: utf-8 -*-
--module(ds_drv).
+-module(ds_probe).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 %% API for manual use
@@ -24,27 +24,27 @@
 %% Go through a table to spec a field based on a limited number
 %% of rows processed (option 'limit' defaults to 1000):
 %%
-%%   ds_drv:spec(ets, my_table, #my_record.my_field)
+%%   ds_probe:spec(ets, my_table, #my_record.my_field)
 %%
 %% Sending 0 as FieldSpec will process the whole record.
 %% Setting 'limit' to 'infinity' disables the limit (traverse whole table).
 %%
 %% Advanced usage exmaples:
 %%   progress indicator and output dump:
-%%     ds_drv:spec(mnesia, payment_rec, #payment_rec.primary_reference,
-%%                 [{limit, infinity}, progress, dump]).
+%%     ds_probe:spec(mnesia, payment_rec, #payment_rec.primary_reference,
+%%                   [{limit, infinity}, progress, dump]).
 %%
 %%   chain field references to spec a sub-subfield on nested records:
-%%     ds_drv:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg]).
+%%     ds_probe:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg]).
 %%
 %%   getter function for arbitrary data selection:
 %%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_drv:spec(mnesia, kcase, FieldSpecF).
+%%     ds_probe:spec(mnesia, kcase, FieldSpecF).
 %%
 %%   data attributes:
-%%     ds_drv:spec(mnesia, kcase,
-%%                 {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
-%%                 [{limit, infinity}, {progress, 0.5}, dump]).
+%%     ds_probe:spec(mnesia, kcase,
+%%                   {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
+%%                   [{limit, infinity}, {progress, 0.5}, dump]).
 %%
 %%   NB. using a getter fun is slower than a chained reference (list of field numbers),
 %%   so use the fun only where a truly generic accessor is needed. Also, the fun might
@@ -108,7 +108,7 @@ spec(Type, Tab, FieldSpec) ->
 
 
 %% Entry point of parallel processing probe runner;
-%% start of master that runs in-process in the drv
+%% start of master that runs in-process in the probe
 procs_init(#state{current_pos = Pos, limit = Limit} = State) ->
     NProcs = ds_opts:getopt(procs),
     if NProcs > 1 -> io:format("running probe on ~B parallel processes.\n", [NProcs]);

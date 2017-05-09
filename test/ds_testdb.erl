@@ -93,14 +93,14 @@ spec_ct(Config) ->
     AttrSpecs = lists:filter(fun({AttrName,_AttrSpec}) ->
                                      lists:member(AttrName, Attrs)
                              end, ?ATTRS),
-    ds_drv:spec(Type, Tab,
-                {0, AttrSpecs},
-                [ {limit, infinity}
-                , {dump, dumpfile_name(PrivDir, Type, Tab)}
-                , {progress, 0.5}
-                , {rec_attrs, force}
-                , {mnesia_dir, filename:join(PrivDir, ?MNESIA_DIR)}
-                ]).
+    ds_probe:spec(Type, Tab,
+                  {0, AttrSpecs},
+                  [ {limit, infinity}
+                  , {dump, dumpfile_name(PrivDir, Type, Tab)}
+                  , {progress, 0.5}
+                  , {rec_attrs, force}
+                  , {mnesia_dir, filename:join(PrivDir, ?MNESIA_DIR)}
+                  ]).
 
 gui(Type) -> gui(Type, default_name(Type)).
 

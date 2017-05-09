@@ -1,8 +1,8 @@
 %% -*- coding: utf-8 -*-
--module(ds_drv_test).
+-module(ds_probe_test).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
--define(M, ds_drv).
+-define(M, ds_probe).
 
 -include_lib("eunit/include/eunit.hrl").
 
