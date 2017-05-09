@@ -3,9 +3,8 @@
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 %% Client API
--export([ start_link/0
-        , start_link/1
-        , stop/1
+-export([ start/0
+        , start/1
         ]).
 
 -include("config.hrl").
@@ -57,16 +56,11 @@
         , zoom_level
         }).
 
-start_link() ->
-    start_link("ds.bin").
+start() -> start("ds.bin").
 
-start_link(Spec) ->
+start(Spec) ->
     Server = wx:new(),
-    {_, _, _, Pid} = wx_object:start_link(?MODULE, [Server, Spec], []),
-    {ok, Pid}.
-
-stop(Pid) ->
-    gen_server:call(Pid, shutdown).
+    wx_object:start(?MODULE, [Server, Spec], []).
 
 init(Config) ->
     wx:batch(fun() -> do_init(Config) end).
@@ -205,15 +199,10 @@ handle_event(#wx{} = Event, State = #state{}) ->
 handle_info(_Msg, State) ->
     {noreply, State}.
 
-handle_call(shutdown, _From, State=#state{frame=Frame}) ->
-    wxFrame:destroy(Frame),
-    {stop, normal, ok, State};
-
 handle_call(_Msg, _From, State) ->
     {reply, {error, nyi}, State}.
 
-handle_cast(Msg, State) ->
-    io:format(user, "Got cast ~p~n",[Msg]),
+handle_cast(_Msg, State) ->
     {noreply, State}.
 
 code_change(_, _, State) ->

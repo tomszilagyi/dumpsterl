@@ -104,7 +104,7 @@ spec_ct(Config) ->
 
 gui(Type) -> gui(Type, default_name(Type)).
 
-gui(Type, Tab) -> ds_gui:start_link(dumpfile_name(?DATA_DIR, Type, Tab)).
+gui(Type, Tab) -> ds_gui:start(dumpfile_name(?DATA_DIR, Type, Tab)).
 
 
 default_name(mnesia) ->

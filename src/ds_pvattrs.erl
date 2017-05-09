@@ -21,7 +21,7 @@
 
 %% Create 2-tuple TK from value attributes
 %% TODO maybe require a normalized form of Attrs here
-%% (pre-process them in ds_drv) so we can do simple pattern matching
+%% (pre-process them in ds and ds_probe) so we can do simple pattern matching
 %% instead of proplists:get_value/2 each time we want ts and key
 extract_tk(Attrs) ->
     Ts = proplists:get_value(ts, Attrs),

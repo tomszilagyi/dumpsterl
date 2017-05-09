@@ -9,10 +9,11 @@ Stuff that definitely needs treatment before the initial public release
 
 ** General
 *** TODO documentation
+- README.md
 - EDoc should be generated and contain API documentation
 - AsciiDoc should be generated and contain user guide
 
-*** TODO reorg modules
+*** DONE reorg modules
   - ds -> ds_core or ds_spec or ds_tree
   - ds should be an interface module and the only module the user has
     to manually call functions in, eg. ds:shell(), ds:gui(), etc.
