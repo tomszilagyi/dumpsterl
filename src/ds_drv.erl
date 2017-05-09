@@ -164,7 +164,7 @@ procs_master_loop(#state{next_pid = NextPid, spec=Spec0, limit = PrevLimit,
             procs_master_loop(State#state{progress=Progress});
         {result,_Pid, SlaveSpec} ->
             ?debug("master: result from ~p, n_procs: ~p", [_Pid, NProcs]),
-            Spec = ds:join(Spec0, SlaveSpec),
+            Spec = ds_spec:join(Spec0, SlaveSpec),
             procs_master_loop(State0#state{spec=Spec, n_procs = NProcs-1});
         finish ->
             procs_master_loop(State0#state{limit = 0}); % trigger soft finish
@@ -203,10 +203,10 @@ init_fold(#handle{} = Handle0, FieldSpec0) ->
     Handle = open_dets_table(Handle0),
     #handle{table=Tab, accessors={FirstF, _ReadF, _NextF}} = Handle,
     FieldSpec = normalize_spec(FieldSpec0),
-    FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
+    FoldFun = fold_kernel(fun ds_spec:add/2, FieldSpec),
     #state{status=spec_table,
            handle=Handle, field_spec=FieldSpec, fold_fun=FoldFun,
-           spec=ds:new(), limit=ds_opts:getopt(limit), current_pos=FirstF(Tab)};
+           spec=ds_spec:new(), limit=ds_opts:getopt(limit), current_pos=FirstF(Tab)};
 %% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
 init_fold(Filename, FieldSpec0) ->
     ds_records:init(),
@@ -216,10 +216,10 @@ init_fold(Filename, FieldSpec0) ->
                                , {repair, false}
                                ]),
     FieldSpec = normalize_spec(FieldSpec0),
-    FoldFun = fold_kernel(fun ds:add/2, FieldSpec),
+    FoldFun = fold_kernel(fun ds_spec:add/2, FieldSpec),
     #state{status=spec_disk_log,
            handle=Filename, field_spec=FieldSpec, fold_fun=FoldFun,
-           spec=ds:new(), limit=ds_opts:getopt(limit), current_pos=start}.
+           spec=ds_spec:new(), limit=ds_opts:getopt(limit), current_pos=start}.
 
 %% Prepare a fold step based on current state. Result is either
 %% - {#state{}, done} in case we are done;

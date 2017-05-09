@@ -72,7 +72,7 @@ test_spec_attrs(Type, Attributes, Config0) ->
     io:format(user, "Testing spec type=~p, attributes=~p\n\n", [Type, Attributes]),
     ds_testdb:generate_ct(Config),
     Spec0 = ds_testdb:spec_ct(Config),
-    Spec = ds:postproc(Spec0),
+    Spec = ds_spec:postproc(Spec0),
     io:format(user, "generating report for spec node:", []),
     check_report(Spec),
     io:format(user, "\n\n", []),

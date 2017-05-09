@@ -528,7 +528,7 @@ spec_to_form_test() ->
        spec_to_form(form_test_spec())).
 
 pp_spec_test() ->
-    ?assertEqual("term()", pp_spec(ds:new())),
+    ?assertEqual("term()", pp_spec(ds_spec:new())),
     ?assertEqual(
        "  atom()\n"
        "| pos_integer()\n"

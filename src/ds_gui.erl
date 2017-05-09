@@ -451,7 +451,7 @@ lc_add_row(LC, N, Items) ->
 load_spec({_Class,_Data,_Children}=Tree0) ->
     {Tree, Meta} = decode_spec(Tree0),
     io:format(user, "Spec metadata: ~p~n", [Meta]),
-    {ds_zipper:from_tree(ds:postproc(Tree)), Meta};
+    {ds_zipper:from_tree(ds_spec:postproc(Tree)), Meta};
 load_spec(Filename) ->
     {ok, Bin} = file:read_file(Filename),
     load_spec(erlang:binary_to_term(Bin)).

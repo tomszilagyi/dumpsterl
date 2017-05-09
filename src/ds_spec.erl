@@ -1,5 +1,5 @@
 %% -*- coding: utf-8 -*-
--module(ds).
+-module(ds_spec).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
 %% `dumpsterl' derives a spec of data based on a stream of values.

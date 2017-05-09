@@ -105,10 +105,10 @@ test_spec(TestFun, NRecs) ->
      [{tuple, _,
        [{{record, {rec_test, 5}}, {StatsT, _ExtT}, SpecFields}]}]} = SpecT,
 
-    ?assert(ds:eq(Spec0, lists:nth(1, SpecFields))),
-    ?assert(ds:eq(Spec1, lists:nth(2, SpecFields))),
-    ?assert(ds:eq(Spec2, lists:nth(3, SpecFields))),
-    ?assert(ds:eq(Spec3, lists:nth(4, SpecFields))),
+    ?assert(ds_spec:eq(Spec0, lists:nth(1, SpecFields))),
+    ?assert(ds_spec:eq(Spec1, lists:nth(2, SpecFields))),
+    ?assert(ds_spec:eq(Spec2, lists:nth(3, SpecFields))),
+    ?assert(ds_spec:eq(Spec3, lists:nth(4, SpecFields))),
     ?assertEqual(NRecs, ds_stats:get_count(StatsT)).
 
 %% Test utility functions

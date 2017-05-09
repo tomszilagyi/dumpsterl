@@ -7,7 +7,7 @@
 -include("config.hrl").
 
 new_test() ->
-    ?assertMatch({term, {_Stats, _Ext}, []}, ds:new()).
+    ?assertMatch({term, {_Stats, _Ext}, []}, ds_spec:new()).
 
 -ifdef(CONFIG_MAPS).
 
@@ -19,7 +19,7 @@ maps_test() ->
         , #{k1 => ad, k4 => dd, k2 => bd}
         ],
 
-    Spec = lists:foldl(fun ds:add/2, ds:new(), [{V, []} || V <- L]),
+    Spec = lists:foldl(fun ds_spec:add/2, ds_spec:new(), [{V, []} || V <- L]),
 
     {term, _, [{map, {Stats, [k1,k2,k3,k4]}, [Ch1, Ch2, Ch3, Ch4]}]} = Spec,
     ?assertEqual(5, ds_stats:get_count(Stats)),
