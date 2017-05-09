@@ -455,78 +455,142 @@ ext_improper_list_test() ->
     E9 = ext_join(C, E4, E8),
     ?assertEqual([{1,4}, {2,2}, {3,2}], E9).
 
+form_test_spec_children() ->
+    [{atom, data, []},
+     {pos_integer, data, []},
+     {[], data, []},
+     {<<>>, data, []},
+     {{}, data, []},
+     {nonempty_list, data,
+      [{{tuple,2}, data,
+        [{atom, data, []},
+         {0, data, []}]}]},
+     {improper_list, data,
+      [{term, data,
+        [{atom, data, []},
+         {float, data, []}]},
+       {atom, data, []}]},
+     {{record, {widget1,4}}, {stats, []},
+      [{number, data, []},
+       {atom, data, []},
+       {byte, data, []}]},
+     {{record, {widget2,4}},
+      {stats, [{[count, type, status],
+                attr_source_locations}]},
+      [{number, data, []},
+       {atom, data, []},
+       {byte, data, []}]},
+     {tuple, data,
+      [{{tuple,2}, data,
+        [{atom, data, []},
+         {0, data, []}]},
+       {{tuple,3}, data,
+        [{atom, data, []},
+         {0, data, []},
+         {float, data, []}]}]}].
+
+union_form_no_maps() ->
+    [{type,1,atom,[]},
+     {type,1,pos_integer,[]},
+     {type,1,nil,[]},
+     {type,1,binary,[{integer,1,0},{integer,1,0}]},
+     {type,1,tuple,[]},
+     {type,1,list,
+      [{type,1,tuple,
+        [{type,1,atom,[]},
+         {integer,1,0}]}]},
+     {type,1,improper_list,
+      [{type,1,union,
+        [{type,1,atom,[]},
+         {type,1,float,[]}]},
+       {type,1,atom,[]}]},
+     {type,1,record,
+      [{atom,1,widget1},
+       {type,1,field_type,[{atom,1,field2},{type,1,number,[]}]},
+       {type,1,field_type,[{atom,1,field3},{type,1,atom,[]}]},
+       {type,1,field_type,[{atom,1,field4},{type,1,byte,[]}]}]},
+     {type,1,record,
+      [{atom,1,widget2},
+       {type,1,field_type,[{atom,1,count},{type,1,number,[]}]},
+       {type,1,field_type,[{atom,1,type},{type,1,atom,[]}]},
+       {type,1,field_type,[{atom,1,status},{type,1,byte,[]}]}]},
+     {type,1,tuple,[{type,1,atom,[]},{integer,1,0}]},
+     {type,1,tuple,
+      [{type,1,atom,[]},{integer,1,0},{type,1,float,[]}]}].
+
+-ifdef(CONFIG_MAPS).
+
 form_test_spec() ->
     {term, data,
-     [{atom, data, []},
-      {pos_integer, data, []},
-      {[], data, []},
-      {<<>>, data, []},
-      {{}, data, []},
-      {nonempty_list, data,
-       [{{tuple,2}, data,
-         [{atom, data, []},
-          {0, data, []}]}]},
-      {improper_list, data,
-       [{term, data,
-         [{atom, data, []},
-          {float, data, []}]},
-        {atom, data, []}]},
-      {map, data, []},
-      {{record, {widget1,4}}, {stats, []},
-       [{number, data, []},
-        {atom, data, []},
-        {byte, data, []}]},
-      {{record, {widget2,4}},
-       {stats, [{[count, type, status],
-                 attr_source_locations}]},
-       [{number, data, []},
-        {atom, data, []},
-        {byte, data, []}]},
-      {tuple, data,
-       [{{tuple,2}, data,
-         [{atom, data, []},
-          {0, data, []}]},
-        {{tuple,3}, data,
-         [{atom, data, []},
-          {0, data, []},
-          {float, data, []}]}]}]}.
+     [ {map, data, []}
+     | form_test_spec_children()
+     ]}.
+
+union_form() ->
+    [ {type,1,map,any}
+    | union_form_no_maps()
+    ].
+
+-else.
+
+form_test_spec() ->
+    {term, data, form_test_spec_children()}.
+
+union_form() ->
+    union_form_no_maps().
+
+-endif.
 
 spec_to_form_test() ->
     ?assertEqual(
        {attribute,1,type,
         {t,
-         {type,1,union,
-          [{type,1,atom,[]},
-           {type,1,pos_integer,[]},
-           {type,1,nil,[]},
-           {type,1,binary,[{integer,1,0},{integer,1,0}]},
-           {type,1,tuple,[]},
-           {type,1,list,
-            [{type,1,tuple,
-              [{type,1,atom,[]},
-               {integer,1,0}]}]},
-           {type,1,improper_list,
-            [{type,1,union,
-              [{type,1,atom,[]},
-               {type,1,float,[]}]},
-             {type,1,atom,[]}]},
-           {type,1,map,any},
-           {type,1,record,
-            [{atom,1,widget1},
-             {type,1,field_type,[{atom,1,field2},{type,1,number,[]}]},
-             {type,1,field_type,[{atom,1,field3},{type,1,atom,[]}]},
-             {type,1,field_type,[{atom,1,field4},{type,1,byte,[]}]}]},
-           {type,1,record,
-            [{atom,1,widget2},
-             {type,1,field_type,[{atom,1,count},{type,1,number,[]}]},
-             {type,1,field_type,[{atom,1,type},{type,1,atom,[]}]},
-             {type,1,field_type,[{atom,1,status},{type,1,byte,[]}]}]},
-           {type,1,tuple,[{type,1,atom,[]},{integer,1,0}]},
-           {type,1,tuple,
-            [{type,1,atom,[]},{integer,1,0},{type,1,float,[]}]}]},
+         {type,1,union,union_form()},
          []}},
        spec_to_form(form_test_spec())).
 
+-ifdef(CONFIG_PP_NEW).
+pp_spec_test() ->
+    ?assertEqual("term()", pp_spec(ds_spec:new())),
+    ?assertEqual(
+       "map() |\n"
+       "atom() |\n"
+       "pos_integer() |\n"
+       "[] |\n"
+       "<<>> |\n"
+       "{} |\n"
+       "[{atom(), 0}] |\n"
+       "improper_list(atom() | float(), atom()) |\n"
+       "#widget1{field2 :: number(),\n"
+       "         field3 :: atom(),\n"
+       "         field4 :: byte()} |\n"
+       "#widget2{count :: number(), type :: atom(), status :: byte()} |\n"
+       "{atom(), 0} |\n"
+       "{atom(), 0, float()}",
+       pp_spec(form_test_spec())).
+-else.
+-ifdef(CONFIG_MAPS).
+pp_spec_test() ->
+    ?assertEqual("term()", pp_spec(ds_spec:new())),
+    ?assertEqual(
+       "  map()\n"
+       "| atom()\n"
+       "| pos_integer()\n"
+       "| []\n"
+       "| <<>>\n"
+       "| {}\n"
+       "| [{atom(), 0}]\n"
+       "| improper_list(atom() | float(), atom())\n"
+       "| #widget1{field2 :: number(),\n"
+       "           field3 :: atom(),\n"
+       "           field4 :: byte()}\n"
+       "| #widget2{count :: number(),\n"
+       "           type :: atom(),\n"
+       "           status :: byte()}\n"
+       "| {atom(), 0}\n"
+       "| {atom(), 0, float()}",
+       pp_spec(form_test_spec())).
+-else.
 pp_spec_test() ->
     ?assertEqual("term()", pp_spec(ds_spec:new())),
     ?assertEqual(
@@ -537,7 +601,6 @@ pp_spec_test() ->
        "| {}\n"
        "| [{atom(), 0}]\n"
        "| improper_list(atom() | float(), atom())\n"
-       "| map()\n"
        "| #widget1{field2 :: number(),\n"
        "           field3 :: atom(),\n"
        "           field4 :: byte()}\n"
@@ -547,5 +610,7 @@ pp_spec_test() ->
        "| {atom(), 0}\n"
        "| {atom(), 0, float()}",
        pp_spec(form_test_spec())).
+-endif.
+-endif.
 
 -endif.

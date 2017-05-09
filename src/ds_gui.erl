@@ -456,7 +456,6 @@ decode_spec({Class, {Stats, MetaExt}, Children} = Tree0) ->
 
 -else.
 %% In case the GUI is disabled:
-start_link() -> throw(wx_gui_disabled).
-start_link(_) -> throw(wx_gui_disabled).
-stop(_) -> throw(wx_gui_disabled).
+start() -> throw(wx_gui_disabled).
+start(_) -> throw(wx_gui_disabled).
 -endif.

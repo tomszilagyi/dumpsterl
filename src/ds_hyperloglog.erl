@@ -355,7 +355,7 @@ test_value(N) ->
         0 -> {value, N};
         1 -> [list, with, N];
         2 -> integer_to_list(N);
-        3 -> term_to_binary(N);
+        3 -> term_to_binary(N * N);
         4 -> float(N);
         5 -> N
     end.

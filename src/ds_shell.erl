@@ -22,8 +22,8 @@
 -define(DEFAULT_OPTIONS, [dump, {progress, 0.5}]).
 
 -record(state,
-        { type       = disk_log % ets
-        , table      = "kred_data/kcase.DCD"
+        { type       = mnesia
+        , table      = widget_mnesia
         , field      = 0
         , attrs      = [] %[{ts, 3}, {key, 2}]
         , options    = ?DEFAULT_OPTIONS

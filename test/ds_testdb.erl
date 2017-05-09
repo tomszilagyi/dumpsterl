@@ -12,6 +12,7 @@
         , spec_ct/1
         , gui/1
         , gui/2
+        , setup_mnesia/1
         ]).
 
 %% This module supports manual and automated testing with a synthetically

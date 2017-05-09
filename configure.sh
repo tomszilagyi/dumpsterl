@@ -44,6 +44,15 @@ else
     echo "-undef(CONFIG_RAND_MODULE)." >> $CONFIG
 fi
 
+# Newer layout for pretty-printed output starting with R18
+if [ $ERLANG_OTP_RELEASE -ge 18 ] ; then
+    echo " - Newer pretty-printed output layout: yes"
+    echo "-define(CONFIG_PP_NEW, true)." >> $CONFIG
+else
+    echo " - Newer pretty-printed output layout: no"
+    echo "-undef(CONFIG_PP_NEW)." >> $CONFIG
+fi
+
 # Maps appeared in R17
 if [ $ERLANG_OTP_RELEASE -ge 17 ] ; then
     echo " - compile with support for maps: yes"
