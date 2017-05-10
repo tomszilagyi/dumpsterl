@@ -114,6 +114,8 @@ eval_cmd("run\n", State) ->
         false -> State
     end;
 eval_cmd("stop\n", State) -> stop_probe(State);
+eval_cmd("gui\n", State) -> gui(State);
+eval_cmd("gui " ++ ParamStr, State) -> gui(ParamStr, State);
 eval_cmd("help\n", State) -> help(State);
 eval_cmd("help " ++ ParamStr, State) -> help(ParamStr, State);
 eval_cmd(Line, State) -> invalid_input(Line, State).
@@ -265,6 +267,7 @@ help(State) ->
               "      see above for params and options\n"
               "  run\n"
               "  stop\n"
+              "  gui [<dump>]\n"
               "  quit\n",
               [?PARAMS_STR, opts_str()]),
     State.
@@ -308,7 +311,27 @@ parse_term(Str) ->
             end
     end.
 
+error_string({_Loc, erl_scan,_Error}) -> "parse error";
 error_string({_Loc,_Mod, Error}) -> Error.
+
+
+gui(#state{options = Options} = State) ->
+    DumpFile = ds_opts:getopt(dump, Options),
+    start_gui(DumpFile, State).
+
+gui(ParamStr, State) ->
+    case parse_term(ParamStr) of
+        {ok, DumpFile} -> start_gui(DumpFile, State);
+        {error, ReasonStr} -> io:format("~s~n", [ReasonStr]),
+                              State
+    end.
+
+start_gui(DumpFile, State) ->
+    case filelib:is_regular(DumpFile) of
+        true -> ds_gui:start(DumpFile);
+        false -> io:format("Cannot access dump file: ~p~n", [DumpFile])
+    end,
+    State.
 
 
 run_probe(#state{type = Type, table = Table, field = Field, attrs = Attrs,
