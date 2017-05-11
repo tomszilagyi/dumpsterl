@@ -20,20 +20,6 @@
 
 -include("config.hrl").
 
--ifdef(CONFIG_LISTS_FILTERMAP).
--define(filtermap(Fun, List), lists:filtermap(Fun, List)).
--else.
--define(filtermap(Fun, List), filtermap(Fun, List)).
-filtermap(Fun, List) ->
-    lists:foldr(fun(Elem, Acc) ->
-                        case Fun(Elem) of
-                            false -> Acc;
-                            true -> [Elem|Acc];
-                            {true, Value} -> [Value|Acc]
-                        end
-                end, [], List).
--endif.
-
 opts() ->
     %% Dumpsterl operation can be controlled to some extent via options.
     %% The following table specifies the options interpreted.
@@ -132,7 +118,7 @@ getopts() ->
 getopts_all() -> [{K, getopt(K)} || K <- keys()].
 
 normalize_opts(Opts) ->
-    ?filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
+    lists:filtermap(fun(Opt) -> normalize_opt_f(Opt, Opts) end, Opts).
 
 normalize_opt_f(Opt, Opts) ->
     [Key] = proplists:get_keys([Opt]),

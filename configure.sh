@@ -13,6 +13,8 @@ EOF
 
 ERLANG_OTP_RELEASE=$(erl -noshell -eval 'io:fwrite(erlang:system_info(otp_release)), halt().')
 case "$ERLANG_OTP_RELEASE" in
+    R11[AB]*) ERLANG_OTP_RELEASE=11;;
+    R12[AB]*) ERLANG_OTP_RELEASE=12;;
     R13[AB]*) ERLANG_OTP_RELEASE=13;;
     R14[AB]*) ERLANG_OTP_RELEASE=14;;
     R15[AB]*) ERLANG_OTP_RELEASE=15;;
@@ -20,6 +22,15 @@ case "$ERLANG_OTP_RELEASE" in
     # Newer versions are already single-integer
     *) ;;
 esac
+
+if [ $ERLANG_OTP_RELEASE -lt 16 ] ; then
+    echo
+    echo "********************************************************"
+    echo "*  Sorry, dumpsterl requires Erlang/OTP R16 or later!  *"
+    echo "********************************************************"
+    echo
+    exit 1
+fi
 
 echo " - Erlang/OTP release: R$ERLANG_OTP_RELEASE"
 echo "-define(ERLANG_OTP_RELEASE, $ERLANG_OTP_RELEASE)." >> $CONFIG
@@ -60,15 +71,6 @@ if [ $ERLANG_OTP_RELEASE -ge 17 ] ; then
 else
     echo " - compile with support for maps: no"
     echo "-undef(CONFIG_MAPS)." >> $CONFIG
-fi
-
-# lists:filtermap/2 was added in R16
-if [ $ERLANG_OTP_RELEASE -ge 16 ] ; then
-    echo " - lists:filtermap/2: yes"
-    echo "-define(CONFIG_LISTS_FILTERMAP, true)." >> $CONFIG
-else
-    echo " - lists:filtermap/2: no"
-    echo "-undef(CONFIG_LISTS_FILTERMAP)." >> $CONFIG
 fi
 
 echo >> $CONFIG
