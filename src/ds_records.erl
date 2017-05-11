@@ -6,7 +6,8 @@
         , reinit/0
         , get_attrs/0
         , put_attrs/1
-        , lookup/1]).
+        , lookup/1
+        , mnesia_dir/0]).
 
 -define(STORAGE_KEY, dumpsterl_rec_attrs).
 

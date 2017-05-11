@@ -15,36 +15,41 @@
 
 -define(STATUSLINE_KEY, ds_shell_status_line).
 -define(PROMPT, "ds => ").
+-define(COMMANDS, ["gui", "help", "quit", "run", "set", "show", "stop"]).
 -define(PARAMS, ["type", "table", "field", "attrs", "options"]).
 -define(PARAMS_STR, string:join(?PARAMS, " ")).
 -define(TYPES, ["dets", "disk_log", "ets", "mnesia"]).
 -define(TYPES_STR, string:join(?TYPES, " ")).
--define(DEFAULT_OPTIONS, [dump, {progress, 0.5}]).
 
 -record(state,
         { type
         , table
         , field      = 0
         , attrs      = [] %[{ts, 3}, {key, 2}]
-        , options    = ?DEFAULT_OPTIONS
+        , options
         , probe_pid
         , probe_monitor
         }).
 
 start() ->
-    io:fwrite(user,
-              "\nDumpsterl interactive probe shell.\n"
+    io:fwrite("\nDumpsterl interactive probe shell.\n"
               "Type 'quit' + <enter> to get back to the Erlang shell;\n"
               "     'help' + <enter> to get help.\n\n", []),
-    ds_opts:setopts(?DEFAULT_OPTIONS),
-    ds_records:init(),
-    set_statusline_pid(spawn_link(?MODULE, statusline_srv, [])),
     DefaultType = ets,
     DefaultTable = default_table(DefaultType),
-    repl(#state{type = DefaultType, table = DefaultTable}).
+    DefaultOptions = [ dump
+                     , {mnesia_dir, ds_utils:cut_cwd(ds_records:mnesia_dir())}
+                     , {progress, 0.5}
+                     ],
+    ds_opts:setopts(DefaultOptions),
+    ds_records:init(),
+    set_statusline_pid(spawn_link(?MODULE, statusline_srv, [])),
+    repl(#state{type = DefaultType,
+                table = DefaultTable,
+                options = DefaultOptions}).
 
 default_table(ets) ->
-    case ets:all() of
+    case tables(ets) of
         [] -> undefined;
         AllTables ->
             case lists:filter(fun is_atom/1, AllTables) of
@@ -53,16 +58,24 @@ default_table(ets) ->
             end
     end;
 default_table(mnesia) ->
-    case catch mnesia:system_info(tables) of
-        {'EXIT', {aborted, _}} -> undefined;
-        [schema] -> undefined; %% can't read the schema via mnesia!
-        Tables -> hd(lists:filter(fun(schema) -> false;
-                                     (_) -> true
-                                  end, Tables))
+    case tables(mnesia) of
+        [] -> undefined;
+        Tables -> hd(Tables)
     end;
 default_table(_Type) -> undefined.
 
+tables(ets) ->
+    ets:all();
+tables(mnesia) ->
+    case catch mnesia:system_info(tables) of
+        {'EXIT', {aborted, _}} -> [];
+        Tables -> lists:filter(fun(schema) -> false;
+                                  (_) -> true
+                               end, Tables)
+    end.
+
 repl(State0) ->
+    io:setopts([{expand_fun, mk_expand_fun(State0)}]),
     Line = io:get_line(?PROMPT),
     State = wait_for_probe(0, State0),
     print_statusline(Line, State),
@@ -77,6 +90,77 @@ repl(State0) ->
             io:nl(),
             ?MODULE:repl(NewState)
     end.
+
+%% Return an expand fun used to perform tab-completion (expansion).
+%% See the doc for io:setopts/1, option {expand_fun, expand_fun()}.
+mk_expand_fun(State) ->
+    fun(ReversePrefix) ->
+        expand("", lists:reverse(ReversePrefix), State)
+    end.
+
+expansions("",_State) -> ?COMMANDS;
+%% commands
+expansions("help",_State) ->
+    Exps = ["all", "commands", "params"] % NB.: "options" is part of ?PARAMS
+        ++ ?COMMANDS ++ ?PARAMS ++ opts(),
+    [" " ++ E || E <- Exps];
+expansions("show",_State) ->
+    [" " ++ E || E <- ?PARAMS ++ opts()];
+expansions("set",_State) ->
+    Exps = (?PARAMS ++ opts()) -- ["options"],
+    [" " ++ E || E <- Exps];
+%% parameters
+expansions("set hll_b",_State) ->
+    [" false" | [lists:concat([" ", B]) || B <- lists:seq(4, 16)]];
+expansions("set limit",_State) ->
+    [" infinity", " 100000", " 200000", " 500000"];
+expansions("set progress",_State) ->
+    [" false", " 0.5", " 1", " 2", " 5"];
+expansions("set rec_attrs",_State) ->
+    [" false", " true", " force"];
+expansions("set samples",_State) ->
+    [" false", " infinity", " 8", " 16", " 24", " 32", " 48", " 64"];
+expansions("set type",_State) ->
+    [" " ++ E || E <- ?TYPES];
+expansions("set table", #state{type=ets}) ->
+    [lists:concat([" ", E]) || E <- tables(ets)];
+expansions("set table", #state{type=mnesia}) ->
+    [lists:concat([" ", E]) || E <- tables(mnesia)];
+%% TODO expansions for dets and disk_log
+%% starting from mnesia_dir, files that end in DAT and DCD
+expansions("set term",_State) ->
+    [" dumb", " vt100"];
+expansions(_Prefix,_State) ->
+    [].
+
+expand(Acc, "", State) ->
+    {yes, "", expansions(Acc, State)};
+expand(Acc, Prefix, State) ->
+    Expansions = expansions(Acc, State),
+    FullMatchExps = [E || E <- Expansions, string:str(Prefix, E) =:= 1],
+    case FullMatchExps of
+        [Exp] ->
+            %% one of the possible expansions has been entered in full;
+            %% recurse to the next expansion level
+            expand(Acc ++ Exp, string:substr(Prefix, length(Exp)+1), State);
+        [] ->
+            %% try to expand based on partially entered form
+            expand_part(Prefix, Expansions)
+    end.
+
+expand_part(Prefix, Expansions) ->
+    PartMatchExps = [E || E <- Expansions, string:str(E, Prefix) =:= 1],
+    case PartMatchExps of
+        [] -> % prefix does not match any of the expansions
+            {yes, "", []};
+        [MatchStr] -> % prefix of a single expansion; expand the remaining part
+            {no, string:substr(MatchStr, length(Prefix) + 1), []};
+        [MatchH|MatchT] = Matches -> % common prefix of multiple possible expansions
+            CommonPrefix =
+                lists:foldl(fun ds_utils:common_prefix/2, MatchH, MatchT),
+            {yes, string:substr(CommonPrefix, length(Prefix) + 1), Matches}
+    end.
+
 
 print_statusline(_Line, #state{probe_pid = undefined}) -> ok;
 print_statusline(Line, _State) ->
@@ -163,12 +247,23 @@ set_opt(OptStr, Value, #state{options=Options0} = State) ->
     case lists:member(Opt, OptKeys) of
         true  ->
             Options1 = proplists:delete(Opt, Options0),
-            Options2 = case Value of
-                           false -> Options1;
-                           _     -> [{Opt, Value} | Options1]
-                       end,
-            Options = ds_opts:normalize_opts(Options2),
-            ds_opts:setopts(Options),
+            Options2 =
+                %% FIXME maybe this could be made nicer:
+                case {Opt, Value} of
+                    %% hll_b: special semantics
+                    {hll_b, false} -> [{hll_b, false} | Options1];
+                    %% rec_attrs: special semantics
+                    {rec_attrs, true} -> Options1;
+                    {rec_attrs, force} -> [rec_attrs | Options1];
+                    {rec_attrs, false} -> [{rec_attrs, false} | Options1];
+                    %% samples: special semantics
+                    {samples, false} -> [{samples, false} | Options1];
+                    %% ordinary options
+                    {_, false} -> Options1;
+                    _ -> [{Opt, Value} | Options1]
+                end,
+            ds_opts:setopts(Options2),
+            Options = ds_opts:getopts(),
             case Opt of
                 mnesia_dir -> ds_records:reinit();
                 _ -> ok
@@ -258,26 +353,142 @@ show_opt(Key, Options) ->
     io:format("~10s: ~p~n", [Key, Value]).
 
 help(State) ->
-    io:format("Commands:\n"
+    io:format("\nCommands:\n"
               "  help [<command|param|option>]\n"
+              "      Type 'help help' for useful pointers.\n"
               "  show [<param|option> ...]\n"
               "      params: ~s\n"
               "      options: ~s\n"
               "  set <param|option> <value>\n"
-              "      see above for params and options\n"
+              "      See above for params and options.\n"
               "  run\n"
               "  stop\n"
-              "  gui [<dump>]\n"
+              "  gui [<dumpfile>]\n"
               "  quit\n",
               [?PARAMS_STR, opts_str()]),
     State.
 
-help("help"++_, State) ->
-    io:format("Display help for dumpsterl commands, parameters and options.\n"
-              "Type 'help <keyword>' to get help specific to a keyword.\n"
-              "Type 'show' to get a list of valid parameters and options.\n"),
+
+%% all:
+help("all"++_, State0) ->
+    io:fwrite("\nCommands:\n"),
+    State1 = help("commands", State0),
+    io:fwrite("\n\nParams:\n"),
+    State2 = help("params", State1),
+    io:fwrite("\n\nOptions:\n"),
+    help("options", State2);
+
+%% commands:
+help("commands"++_, State) ->
+    lists:foldl(fun help/2, State, ?COMMANDS);
+help("gui"++_, State) ->
+    io:fwrite(
+      "\ngui [<dumpfile>]\n"
+      "  Launch gui reading the currently configured dump file,\n"
+      "  or the dump file specified by the argument, if present.\n"),
     State;
-%% TODO help text for all commands, params and options
+help("help"++_, State) ->
+    io:fwrite(
+      "\nhelp [<keyword>]\n"
+      "  Display help for dumpsterl commands, params and options.\n"
+      "  Type:\n"
+      "  - 'help' to get a list of valid commands.\n"
+      "  - 'help <keyword>' to get help specific to a keyword.\n"
+      "  - 'help commands' to get help for all valid commands.\n"
+      "  - 'help params' to get help for all valid params.\n"
+      "  - 'help options' to get help for all valid options.\n"
+      "  - 'help all' to print all help output.\n"
+),
+    State;
+help("quit"++_, State) ->
+    io:fwrite(
+      "\nquit\n"
+      "  Quit the Dumpsterl shell, giving control back to the Erlang shell.\n"
+      "  The probe, if running, will be stopped cleanly.\n"),
+    State;
+help("run"++_, State) ->
+    io:fwrite(
+      "\nrun\n"
+      "  Run the probe with current parameters and options.\n"),
+    State;
+help("set"++_, State) ->
+    io:fwrite(
+      "\nset <param|option> <value>\n"
+      "  Set given param or option to supplied value.\n"
+      "  Type 'help params' to get help for all valid params.\n"
+      "  Type 'help options' to get help for all valid options.\n"),
+    State;
+help("show"++_, State) ->
+    io:fwrite(
+      "\nshow [<param|option> ...]\n"
+      "  Show currently configured parameter and option values.\n"
+      "  Issued without arguments, 'show' will print a table with all.\n"
+      "  configuration values. When given a list of param or option names,\n"
+      "  output will be restricted to those only.\n"),
+    State;
+help("stop"++_, State) ->
+    io:fwrite(
+      "\nstop\n"
+      "  If the probe is running, stop it cleanly. Even if the probe is stopped\n"
+      "  this way before reaching its set `limit' or end of table, the spec will\n"
+      "  be properly closed, so that the spec will fully contain all information\n"
+      "  corresponding to the final reported record count.\n"),
+    State;
+
+%% params:
+help("params"++_, State) ->
+    lists:foldl(fun help/2, State, lists:sort(?PARAMS) -- ["options"]);
+help("attrs"++_, State) ->
+    io:fwrite(
+      "\nattrs\n"
+      "  Attribute selector list to specify metadata attributes.\n"
+      "  Syntax: [{Attr, FieldSelector}, ...] where FieldSelector selects\n"
+      "          the source of data to use for attribute Attr.\n"
+      "          See param `field' for the syntax of FieldSelector.\n"
+      "  Attributes currently utilized by the gui:\n"
+      "  - 'key': Record key to associate with data from the record;\n"
+      "  -  'ts': Timestamp to associate with data from the record.\n"),
+    State;
+help("field"++_, State) ->
+    io:fwrite(
+      "\nfield\n"
+      "  Record/tuple field to select for inspection. Supported formats:\n"
+      "  - 0 or []: spec the whole record;\n"
+      "  - pos_integer(): spec the selected field;\n"
+      "  - [pos_integer()]: list of chained field references to select data\n"
+      "       from embedded tuples or records. E.g. [3,2] is interpreted as:\n"
+      "       ``take the third field from the record read from the table, then\n"
+      "         take the second field of it to be processed by dumpsterl.''\n"
+      "  If the referenced field does not exist, the record is skipped from the\n"
+      "  spec (but counts toward the limit and shows up in the output count).\n"),
+    State;
+help("table"++_, State) ->
+    io:fwrite(
+      "\ntable\n"
+      "  The table to read. Its accepted format depends on the `type' setting:\n"
+      "  - mnesia or ets table name (atom);\n"
+      "  - ets table id (integer);\n"
+      "  - dets table name (any term) for an already opened dets table;\n"
+      "  - filename of a dets table or disk_log file.\n"),
+    State;
+help("type"++_, State) ->
+    io:fwrite(
+      "\ntype\n"
+      "  Type of table. This selects the table driver for the probe.\n"
+      "  Valid types: dets | disk_log | ets | mnesia\n"),
+    State;
+
+%% options:
+help("options"++_, State) ->
+    lists:foldl(fun help/2, State, opts());
+help(OptStr0, State) when is_list(OptStr0) ->
+    OptStr = string:strip(OptStr0, right, $\n),
+    case opt_from_string(OptStr) of
+        invalid_option -> invalid_param(OptStr);
+        Opt -> io:nl(), io:fwrite(ds_opts:help(Opt))
+    end,
+    State;
+
 help(Str, State) -> invalid_input(Str, State).
 
 opt_from_string(OptStr) ->
@@ -285,8 +496,9 @@ opt_from_string(OptStr) ->
     catch error:badarg -> invalid_option
     end.
 
-opts_str() ->
-    string:join([atom_to_list(Key) || Key <- ds_opts:keys()], " ").
+opts() -> [atom_to_list(Key) || Key <- ds_opts:keys()].
+
+opts_str() -> string:join(opts(), " ").
 
 invalid_input(Str, State) ->
     io:format("Unrecognized input: ~s" % Str ends with \n

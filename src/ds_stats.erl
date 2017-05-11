@@ -56,6 +56,7 @@ get_pts(#stats{pts=Pts}) -> Pts.
 
 get_samples(#stats{sampler=Sampler}) -> ds_sampler:get_samples(Sampler).
 
+get_cardinality(#stats{hyperloglog=undefined}) -> {0, 0};
 get_cardinality(#stats{count=Count,
                        sampler=Sampler,
                        hyperloglog=HLL}) ->
