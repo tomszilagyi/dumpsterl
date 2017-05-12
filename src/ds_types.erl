@@ -81,7 +81,8 @@ pp_spec(Spec) ->
                 _  -> [First|Rest]
             end,
     StripCount = lists:min([string:span(L, " ") || L <- Lines]),
-    string:join([string:substr(L, 1 + StripCount) || L <- Lines], "\n").
+    string:join([string:substr(L, 1 + StripCount) || L <- Lines],
+                "\n") ++ "\n".
 
 %% Convert a spec to an Erlang abstract type definition form
 spec_to_form(Spec) ->
@@ -551,7 +552,7 @@ spec_to_form_test() ->
 
 -ifdef(CONFIG_PP_NEW).
 pp_spec_test() ->
-    ?assertEqual("term()", pp_spec(ds_spec:new())),
+    ?assertEqual("term()\n", pp_spec(ds_spec:new())),
     ?assertEqual(
        "map() |\n"
        "atom() |\n"
@@ -566,12 +567,12 @@ pp_spec_test() ->
        "         field4 :: byte()} |\n"
        "#widget2{count :: number(), type :: atom(), status :: byte()} |\n"
        "{atom(), 0} |\n"
-       "{atom(), 0, float()}",
+       "{atom(), 0, float()}\n",
        pp_spec(form_test_spec())).
 -else.
 -ifdef(CONFIG_MAPS).
 pp_spec_test() ->
-    ?assertEqual("term()", pp_spec(ds_spec:new())),
+    ?assertEqual("term()\n", pp_spec(ds_spec:new())),
     ?assertEqual(
        "  map()\n"
        "| atom()\n"
@@ -588,11 +589,11 @@ pp_spec_test() ->
        "           type :: atom(),\n"
        "           status :: byte()}\n"
        "| {atom(), 0}\n"
-       "| {atom(), 0, float()}",
+       "| {atom(), 0, float()}\n",
        pp_spec(form_test_spec())).
 -else.
 pp_spec_test() ->
-    ?assertEqual("term()", pp_spec(ds_spec:new())),
+    ?assertEqual("term()\n", pp_spec(ds_spec:new())),
     ?assertEqual(
        "  atom()\n"
        "| pos_integer()\n"
@@ -608,7 +609,7 @@ pp_spec_test() ->
        "           type :: atom(),\n"
        "           status :: byte()}\n"
        "| {atom(), 0}\n"
-       "| {atom(), 0, float()}",
+       "| {atom(), 0, float()}\n",
        pp_spec(form_test_spec())).
 -endif.
 -endif.
