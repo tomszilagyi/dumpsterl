@@ -1,18 +1,17 @@
-Dumpsterl
+#+TITLE: Dumpsterl TODO
+#+AUTHOR: Tom Szilagyi
+#+OPTIONS: ^:nil
 
 The purpose of Dumpsterl is to provide a powerful, extensible and
 user-friendly framework for data exploration in NoSQL environments.
 
-* Features
-
-Stuff that definitely needs treatment before the initial public release
+* Roadmap of planned changes
 
 ** General
 *** TODO documentation
-- README.md
-- EDoc should be generated and contain API documentation
-- AsciiDoc should be generated and contain user guide
-
+- [ ] README.md
+- [ ] EDoc should be generated and contain API documentation
+- [ ] AsciiDoc should be generated and contain user guide
 *** DONE reorg modules
   - ds -> ds_core or ds_spec or ds_tree
   - ds should be an interface module and the only module the user has
@@ -24,16 +23,15 @@ Stuff that definitely needs treatment before the initial public release
 An exemplary data model should be devised and a data generator written
 that randomly generates instances of that data, for testing purposes.
 
-**** TODO test the terminal support on ansi, cygwin, Eterm, etc.
-
-see /lib/terminfo/* for inspiration
-
-**** TODO test on Windows and Mac (if possible)
 **** DONE foreach_otp ./do_test.sh
 
 A script to exercise all the tests with all Erlang versions of
-interest (~R14 to latest).
+interest (R16 to latest).
 
+**** TODO test miscellania
+- [ ] test the terminal support on ansi, cygwin, Eterm, etc.
+      see /lib/terminfo/* for inspiration
+- [ ] test on Windows and Mac
 ** Probe: data acquisition phase
 *** DONE statistical sampling
 - don't add the same value multiple times to samples, to maximize the
@@ -123,12 +121,13 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
  - [X] online help describing commands, params & options
  - [ ] mnesia: show table attributes to help choosing the right spec
  - [ ] support Erlang syntax to enter complex field specs
-*** DONE save probe metadata in spec dump
+*** DONE (almost): save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
-  - the progress information (total items traversed so far). May be
-    more than the count in the Stats of 'T' in case of skipped items.
-  - options used for the run
-  - wall clock of start and end
+  - [X] the progress information (total items traversed so far). May be
+        more than the count in the Stats of 'T' in case of skipped items.
+  - [ ] arguments used for the run: type, table, field, attrs
+  - [X] options used for the run
+  - [X] wall clock of start and end
 - the data can be put into Ext of the spec's root node.
 ** Conversion: between probe and gui
 *** DONE compact
@@ -182,7 +181,7 @@ never mixed within the same list. Currently the resulting spec will
 show that the list item type is a union of byte | tuple, but will
 not indicate that each individual list is either a list of bytes or a
 list of tuples. It would be better(?) if the nonempty_list was
-subclassed further for each subset of types encountered.
+subclassed further for each disjoint subset of types encountered.
 
 *** DONE Type conversion to Erlang abstract form
 
@@ -297,27 +296,28 @@ see them in action.
   Field is the field number and Attribute is the field name.
 
 *** TODO GUI outstanding tasks
-- fix timeline graph with 1 datapoint where StartTs equals EndTs
-- zoom level setting does not affect graphs
-*** GUI toolbars
-**** at the top of spec window
-- show probe metadata
-- set timestamp decoder function
-**** at the top of report
-- enable/disable attribute columns in report
-- save/export report page
-*** Display probe metadata in GUI
-*** Allow setting timestamp decoder function
-- manually supply timestamp format function
+- [ ] fix histogram bar widths (they look uneven)
+- [ ] fix timeline graph with 1 datapoint where StartTs equals EndTs
+- [ ] zoom level setting does not affect graphs
+- [ ] Display probe metadata in GUI
+*** TODO GUI toolbars
+- [ ] at the top of spec window
+      - show probe metadata
+      - set timestamp decoder function
+- [ ] at the top of report
+      - enable/disable attribute columns in report
+      - save/export report page
+*** TODO Allow setting timestamp decoder function
+- provide a way to manually supply timestamp format function
   e.g. if it turns out the ts is in gregorian seconds, allow
   user to set fun calendar:gregorian_seconds_to_datetime/1.
-*** Manage record attributes
+*** TODO Manage record attributes
 - button next to "Type parameters" if record
 - button opens "Record attributes" window
 - allow choosing another one (the first is used as a default)
 - allow manually adding/removing attributes (e.g. if none have been
   collected)
-*** TODO additional gui features
+*** TODO Additional gui features
 - search: allow entering a piece of string, data, etc.
 - toolbar: load, save, generate report, exit, etc.
 - manually add field information in case it could not be
@@ -334,8 +334,7 @@ see them in action.
   generic types)
 - also show percentage in the above cases (where it clearly entails
   a subset share of a total set)
-
-*** TODO support viewing data in different formats
+- support viewing data in different formats
   e.g. if we suspect that an integer contains bit flags,
   it is helpful to be able to switch to a hex/bin view
   and maybe even give names to different bits.
@@ -345,20 +344,19 @@ see them in action.
 
 More tentative / needs research / not a well defined feature to work on
 
-** how does the probe get smoothly loaded into a node?
+** Smooth probe loading
+
+How does the probe get smoothly loaded into a node?
 - it is generally possible to include the application in the host Erlang
   system, but that is not always desirable (wx, etc).
 - a user-friendly mechanism to load only the probe modules would be
   nice.
 - support compiling the probe only (without wx present)
-- support compiling without maps (on old Erlang systems)
-** 'decision tree compiler' for quick computation of values' subtypes
- Allow the user to express the type hierarchy in a more succinct way
- and generate the types categorization code out of that.
-** more efficient in-memory representation of tree, for faster updates
-  store all nodes in a flat ets table keyed by class, since they are
-  unique; updating a node does not involve rebuilding the whole data
-  structure
-  needed? (perf perspective)
-  doable? (cross type domains with generic types)
+- [X] support compiling without maps (on old Erlang systems)
 
+** Decision tree compiler
+
+For quick computation of values' subtypes, while allowing a more
+flexible type hierarchy configuration. Allow the user to express the
+type hierarchy in a more succinct way and generate the type
+categorization code out of that.
