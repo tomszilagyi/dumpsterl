@@ -246,24 +246,19 @@ set_opt(OptStr, Value, #state{options=Options0} = State) ->
           end,
     case lists:member(Opt, OptKeys) of
         true  ->
-            Options1 = proplists:delete(Opt, Options0),
-            Options2 =
-                %% FIXME maybe this could be made nicer:
+            Options =
                 case {Opt, Value} of
-                    %% hll_b: special semantics
-                    {hll_b, false} -> [{hll_b, false} | Options1];
-                    %% rec_attrs: special semantics
-                    {rec_attrs, true} -> Options1;
-                    {rec_attrs, force} -> [rec_attrs | Options1];
-                    {rec_attrs, false} -> [{rec_attrs, false} | Options1];
-                    %% samples: special semantics
-                    {samples, false} -> [{samples, false} | Options1];
-                    %% ordinary options
-                    {_, false} -> Options1;
-                    _ -> [{Opt, Value} | Options1]
+                    {rec_attrs, true} ->
+                        %% special semantics
+                        proplists:delete(rec_attrs, Options0);
+                    _ ->
+                        case ds_opts:normalize_opts([{Opt, Value}]) of
+                            [] -> Options0;
+                            [NewOptTuple] ->
+                                Options1 = proplists:unfold(Options0),
+                                lists:keystore(Opt, 1, Options1, NewOptTuple)
+                        end
                 end,
-            ds_opts:setopts(Options2),
-            Options = ds_opts:getopts(),
             case Opt of
                 mnesia_dir -> ds_records:reinit();
                 _ -> ok
@@ -283,7 +278,8 @@ check_params(#state{table=Table} = State) ->
 %% Check if supplied parameter is valid; return true | false accordingly.
 %% If parameter is invalid, print appropriate error message.
 check_param("table"=_Param, schema, #state{type=mnesia}) ->
-    io:format("Can't process schema table via mnesia; read it as a dets file!\n"),
+    io:format("Can't process schema table via mnesia; "
+              "please read it as a dets file instead!\n"),
     false;
 check_param("table"=_Param, Value, #state{type=mnesia}) ->
     case catch mnesia:table_info(Value, attributes) of

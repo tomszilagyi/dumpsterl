@@ -10,6 +10,7 @@
         , getopts/0
         , getopts_all/0
         , setopts/1
+        , setopts_raw/1
         , normalize_opts/1
         , help/1
         ]).
@@ -60,7 +61,7 @@ opts() ->
        "  A setting of 'infinity' enables processing the whole table.\n"
       }
     , {mnesia_dir,   undefined,    undefined,
-       "dirname()",
+       "dirname() | 'undefined'",
        "  The name of the mnesia directory where table data files are stored.\n"
        "  This option is useful if the Erlang node running dumpsterl does not\n"
        "  run a Mnesia instance, but has access to the database filesystem.\n"
@@ -108,6 +109,8 @@ keys() -> [Opt || {Opt,_Undefined,_Novalue,_TypeStr,_HelpStr} <- opts()].
 
 setopts(Opts) -> put(?PROCDICT_KEY, normalize_opts(Opts)).
 
+setopts_raw(Opts) -> put(?PROCDICT_KEY, Opts).
+
 getopts() ->
     case get(?PROCDICT_KEY) of
         undefined -> [];
@@ -140,9 +143,10 @@ default_opt(Key, Value) ->
               [Key, Value, Default]),
     Default.
 
-%% Return true to keep or {true, {Key, NewValue}} to normalize (change) the
-%% value of an option; return false to skip/ignore; throw errors or exceptions
-%% if data is invalid.
+%% Return true to keep or {true, NewValue} to normalize (change) the
+%% value of an option; return false to skip/ignore; throw errors or
+%% exceptions if data is invalid.
+normalize_opt(dump, false) -> true;
 normalize_opt(dump, S) ->
     true = is_list(S) andalso filelib:is_dir(filename:dirname(S)), true;
 normalize_opt(hll_b, false) -> true;
@@ -151,6 +155,7 @@ normalize_opt(hll_b, I) ->
 normalize_opt(limit, infinity) -> true;
 normalize_opt(limit, N) ->
     true = is_integer(N) andalso N > 0, true;
+normalize_opt(mnesia_dir, undefined) -> true;
 normalize_opt(mnesia_dir, D) ->
     true = filelib:is_dir(D),
     true = filelib:is_regular(filename:join(D, "schema.DAT")),
@@ -169,8 +174,10 @@ normalize_opt(samples, infinity) ->
     true;
 normalize_opt(samples, N) ->
     true = is_integer(N) andalso N > 0, true;
-normalize_opt(term, T) when is_atom(T) -> {true, atom_to_list(T)};
-normalize_opt(term, T) -> true = is_list(T), true;
+normalize_opt(term, dumb) -> {true, "dumb"};
+normalize_opt(term, vt100) -> {true, "vt100"};
+normalize_opt(term, Term) ->
+    true = lists:member(Term, ["dumb", "vt100"]), true;
 normalize_opt(Key, _Value) ->
     io:format("** ignoring unknown option: ~p~n", [Key]),
     false.

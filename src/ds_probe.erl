@@ -144,7 +144,7 @@ procs_spawn_slave(State, MasterPid, Opts, N) ->
 %% Entry point of slave process
 procs_slave(State, MasterPid, Opts, N) ->
     ?debug("init slave ~p", [self()]),
-    ds_opts:setopts(Opts),
+    ds_opts:setopts_raw(Opts),
     NextPid = procs_spawn_slave(State, MasterPid, Opts, N),
     procs_slave_loop(State#state{master_pid = MasterPid, next_pid = NextPid}).
 
