@@ -121,14 +121,14 @@ Is it possible to have a keypos other than 2? If yes, it needs to be a
  - [X] online help describing commands, params & options
  - [ ] mnesia: show table attributes to help choosing the right spec
  - [ ] support Erlang syntax to enter complex field specs
-*** DONE (almost): save probe metadata in spec dump
+*** DONE save probe metadata in spec dump
 - when dumping, also dump metadata (apart from the spec itself):
   - [X] the progress information (total items traversed so far). May be
-        more than the count in the Stats of 'T' in case of skipped items.
-  - [ ] arguments used for the run: type, table, field, attrs
+        more than the count in the Stats of root 'term' in case of skipped items.
+  - [X] arguments used for the run: type, table, field, attrs
   - [X] options used for the run
   - [X] wall clock of start and end
-- the data can be put into Ext of the spec's root node.
+- the metadata is put into Ext of the spec's root node.
 ** Conversion: between probe and gui
 *** DONE compact
   cut intermediary stages of the hierarchy, e.g. if they are all

@@ -44,13 +44,13 @@ gui(Spec) -> ds_gui:start(Spec).
 %% These functions are invoked by the shell (see above) but might be
 %% also used manually, or called directly by third-party code.
 
-spec(Type, Tab, FieldSpec) -> ds_probe:spec(Type, Tab, FieldSpec).
+spec(Type, Tab, ProbeSpec) -> ds_probe:spec(Type, Tab, ProbeSpec).
 
-spec(Type, Tab, FieldSpec, Opts) -> ds_probe:spec(Type, Tab, FieldSpec, Opts).
+spec(Type, Tab, ProbeSpec, Opts) -> ds_probe:spec(Type, Tab, ProbeSpec, Opts).
 
-probe(Type, Tab, FieldSpec) -> ds_probe:start(Type, Tab, FieldSpec).
+probe(Type, Tab, ProbeSpec) -> ds_probe:start(Type, Tab, ProbeSpec).
 
-probe(Type, Tab, FieldSpec, Opts) -> ds_probe:start(Type, Tab, FieldSpec, Opts).
+probe(Type, Tab, ProbeSpec, Opts) -> ds_probe:start(Type, Tab, ProbeSpec, Opts).
 
 
 %% @doc Core spec functions

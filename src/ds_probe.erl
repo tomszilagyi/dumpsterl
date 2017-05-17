@@ -27,7 +27,7 @@
 %%
 %%   ds_probe:spec(ets, my_table, #my_record.my_field)
 %%
-%% Sending 0 as FieldSpec will process the whole record.
+%% Sending 0 as ProbeSpec will process the whole record.
 %% Setting 'limit' to 'infinity' disables the limit (traverse whole table).
 %%
 %% Advanced usage exmaples:
@@ -39,8 +39,8 @@
 %%     ds_probe:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg]).
 %%
 %%   getter function for arbitrary data selection:
-%%     FieldSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_probe:spec(mnesia, kcase, FieldSpecF).
+%%     ProbeSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
+%%     ds_probe:spec(mnesia, kcase, ProbeSpecF).
 %%
 %%   data attributes:
 %%     ds_probe:spec(mnesia, kcase,
@@ -53,8 +53,9 @@
 
 -record(state,
         { status       % idle | spec_table | spec_disk_log
+        , args         % original probe arguments
         , handle       % #handle{} | filename()
-        , field_spec
+        , probe_spec
         , fold_fun
         , limit
         , current_pos  % table key | disk_log continuation
@@ -92,38 +93,48 @@ spec(Type, Tab, FieldSpec, Opts) ->
     ds_opts:setopts(Opts),
     spec(Type, Tab, FieldSpec).
 
-spec(disk_log, Filename, FieldSpec) ->
-    State = init_fold(Filename, FieldSpec),
-    procs_init(State);
+spec(disk_log, Filename, ProbeSpec) ->
+    State = init_fold(Filename, ProbeSpec),
+    procs_init(State#state{args = [ {type, disk_log}
+                                  , {table, Filename}
+                                  , {probe_spec, ProbeSpec}
+                                  ]});
 %% For dets, we also support passing the filename as the table identifier,
 %% in which case we will open and close it for ourselves:
-spec(dets, Filename, FieldSpec) when is_list(Filename) ->
+spec(dets, Filename, ProbeSpec) when is_list(Filename) ->
     Handle = #handle{type=dets, table=undefined, filename=Filename,
                      accessors=accessors(dets)},
-    State = init_fold(Handle, FieldSpec),
-    procs_init(State);
-spec(Type, Tab, FieldSpec) ->
+    State = init_fold(Handle, ProbeSpec),
+    procs_init(State#state{args = [ {type, dets}
+                                  , {table, Filename}
+                                  , {probe_spec, ProbeSpec}
+                                  ]});
+spec(Type, Tab, ProbeSpec) ->
     Handle = #handle{type=Type, table=Tab, accessors=accessors(Type)},
-    State = init_fold(Handle, FieldSpec),
-    procs_init(State).
+    State = init_fold(Handle, ProbeSpec),
+    procs_init(State#state{args = [ {type, Type}
+                                  , {table, Tab}
+                                  , {probe_spec, ProbeSpec}
+                                  ]}).
 
 
 %% Entry point of parallel processing probe runner;
 %% start of master that runs in-process in the probe
-procs_init(#state{current_pos = Pos, limit = Limit} = State) ->
+procs_init(#state{current_pos = Pos, limit = Limit, args = ProbeArgs} = State) ->
     NProcs = ds_opts:getopt(procs),
     if NProcs > 1 -> io:format("running probe on ~B parallel processes.\n", [NProcs]);
        true -> ok
     end,
     MasterPid = self(),
     ?debug("init master ~p", [MasterPid]),
-    %% inhibit progress output in slaves:
-    SlaveState = State#state{progress=ds_progress:init(false)},
     Opts = ds_opts:getopts(),
+    %% inhibit progress output in slaves:
+    SlaveState = State#state{progress = ds_progress:init(ProbeArgs, false)},
     NextPid = procs_spawn_slave(SlaveState, MasterPid, Opts, NProcs),
     MasterPid ! {proc, Pos, Limit, 0}, % Trigger the processing
     procs_master_loop(State#state{master_pid = MasterPid, next_pid = NextPid,
-                                  progress=ds_progress:init(), n_procs = NProcs}).
+                                  progress = ds_progress:init(ProbeArgs),
+                                  n_procs = NProcs}).
 
 %% The NextPid of the last slave is MasterPid
 procs_spawn_slave(_State, MasterPid,_Opts, 1) -> MasterPid;
@@ -201,27 +212,27 @@ procs_slave_loop(#state{master_pid = MasterPid, next_pid = NextPid,
 
 
 %% Initialize a fold through a table
-init_fold(#handle{} = Handle0, FieldSpec0) ->
+init_fold(#handle{} = Handle0, ProbeSpec0) ->
     ds_records:init(),
     Handle = open_dets_table(Handle0),
     #handle{table=Tab, accessors={FirstF, _ReadF, _NextF}} = Handle,
-    FieldSpec = normalize_spec(FieldSpec0),
-    FoldFun = fold_kernel(fun ds_spec:add/2, FieldSpec),
+    ProbeSpec = normalize_spec(ProbeSpec0),
+    FoldFun = fold_kernel(fun ds_spec:add/2, ProbeSpec),
     #state{status=spec_table,
-           handle=Handle, field_spec=FieldSpec, fold_fun=FoldFun,
+           handle=Handle, probe_spec=ProbeSpec, fold_fun=FoldFun,
            spec=ds_spec:new(), limit=ds_opts:getopt(limit), current_pos=FirstF(Tab)};
-%% Initialize a fold through a disk_log file. Useful for Mnesia .DCD and .DCL
-init_fold(Filename, FieldSpec0) ->
+%% Initialize a fold through a disk_log file
+init_fold(Filename, ProbeSpec0) ->
     ds_records:init(),
     {ok, dlog} = disk_log:open([ {name, dlog}
                                , {file, Filename}
                                , {mode, read_only}
                                , {repair, false}
                                ]),
-    FieldSpec = normalize_spec(FieldSpec0),
-    FoldFun = fold_kernel(fun ds_spec:add/2, FieldSpec),
+    ProbeSpec = normalize_spec(ProbeSpec0),
+    FoldFun = fold_kernel(fun ds_spec:add/2, ProbeSpec),
     #state{status=spec_disk_log,
-           handle=Filename, field_spec=FieldSpec, fold_fun=FoldFun,
+           handle=Filename, probe_spec=ProbeSpec, fold_fun=FoldFun,
            spec=ds_spec:new(), limit=ds_opts:getopt(limit), current_pos=start}.
 
 %% Prepare a fold step based on current state. Result is either

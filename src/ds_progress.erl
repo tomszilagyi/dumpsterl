@@ -4,8 +4,8 @@
 
 %% Progress indicator and result dumper for dumpsterl
 
--export([ init/0
-        , init/1
+-export([ init/1
+        , init/2
         , get_count/1
         , update/3
         , final/2
@@ -21,6 +21,7 @@
 %% Progress state
 -record(progress, { interval = false % number | false (disable output)
                   , count = 0        % count of received items
+                  , probe_args       % only for the sake of dump metadata
                   , start_ts         % timestamp when progress was initialized
                   , end_ts           % latest (eventually, last) timestamp
                   , next_tick_count  % next count when progress will be printed
@@ -28,13 +29,15 @@
                   , last_dump_size   % last written dump size in bytes
                   }).
 
-init() -> init(ds_opts:getopt(progress)).
+init(ProbeArgs) -> init(ProbeArgs, ds_opts:getopt(progress)).
 
-init(false) -> #progress{start_ts = os:timestamp()};
-init(Interval) ->
+init(ProbeArgs, false) ->
+    #progress{probe_args = ProbeArgs, start_ts = os:timestamp()};
+init(ProbeArgs, Interval) ->
     io:fwrite("\n"),
     StartTS = os:timestamp(),
-    #progress{interval=Interval, start_ts=StartTS, end_ts=StartTS,
+    #progress{probe_args = ProbeArgs,
+              interval=Interval, start_ts=StartTS, end_ts=StartTS,
               last_dump_ts=StartTS, next_tick_count=1}.
 
 get_count(#progress{count=Count}) -> Count.
@@ -98,11 +101,13 @@ dump_acc(Progress, Acc0, Verbose) ->
     end.
 
 %% Save metadata about the probe run into the toplevel node's extra data.
-add_metadata(#progress{count = Count, start_ts = StartTS, end_ts = EndTS},
+add_metadata(#progress{count = Count, probe_args = ProbeArgs,
+                       start_ts = StartTS, end_ts = EndTS},
              {Class, {Stats, Ext}, Children}) ->
-    Meta = [ {processed, Count}
-           , {node, node()}
+    Meta = [ {args, ProbeArgs}
            , {options, ds_opts:getopts_all()}
+           , {node, node()}
+           , {processed, Count}
            , {start_ts, StartTS}
            , {end_ts, EndTS}
            ],
