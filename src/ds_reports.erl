@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_reports).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -358,8 +360,6 @@ frame_data_cell({td,_Attrs,_Content}=Cell) -> Cell;
 frame_data_cell(Content) when is_list(Content) -> {td, [], Content};
 frame_data_cell(Content) -> {td, [], [Content]}.
 
-
-frame_headers(_Id, [],_Sort,_NDataRows) -> [];
 frame_headers(Id, HeaderSpecL, Sort, NDataRows) ->
     [SortHdr|GroupHdrL] = lists:reverse(HeaderSpecL),
     lists:reverse([frame_header(Id, SortHdr, Sort, NDataRows > 1)

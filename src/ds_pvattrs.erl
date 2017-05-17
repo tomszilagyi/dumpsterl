@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_pvattrs).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -43,8 +45,10 @@ add(Attrs, #pvattrs{count=Count, timespan=TSp}) ->
 join(PVS0, PVS1) -> add(PVS0, PVS1).
 
 
+get_count(undefined) -> 0;
 get_count(#pvattrs{count = Count}) -> Count.
 
+get_timespan(undefined) -> {{undefined, undefined}, {undefined, undefined}};
 get_timespan(#pvattrs{timespan = TSp}) -> TSp.
 
 

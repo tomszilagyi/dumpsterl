@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_sampler).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 

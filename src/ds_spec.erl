@@ -1,10 +1,45 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
+%% @doc The dumpsterl spec tree data structure.
+%%
+%% A spec is represented as a hierarchical tree of type classes. Nodes
+%% of this tree are represented as tuples:
+%%
+%% `{Class, Data, SubSpec}'
+%%
+%% <ul>
+%% <li> `Class' is a term (in most cases an atom) describing
+%%      the type this node represents in the type hierarchy.</li>
+%%
+%% <li> `Data' is node-specific data as a tuple:
+%%
+%%   `{Stats, Ext}'
+%%
+%%   <ul>
+%%   <li> Stats is an instance of #stats{} with general statistics data, eg.:
+%%     <ul>
+%%     <li>an integer count of data items captured by this type class</li>
+%%     <li>an estimator of cardinality (number of different unique values)</li>
+%%     <li>points of interest (min, max)</li>
+%%     <li>an even sampling of the data values</li>
+%%     </ul>
+%%   </li>
+%%   <li> Ext is class-specific extra/extended data to hold
+%%        further attributes and/or statistics.</li>
+%%   </ul>
+%% </li>
+%%
+%% <li> `SubSpec' is a list of child nodes. Depending on the kind of type
+%%   denoted by `Class', this may be a list of subtypes or in case of
+%%   generic types, a list of specs corresponding to the elements
+%%   or fields of this type. The exact semantics of `SubSpec' are left
+%%   up to `Class', but the tree is uniformly recursive through `SubSpecs'.
+%% </li>
+%% </ul>
+
 -module(ds_spec).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
-
-%% `dumpsterl' derives a spec of data based on a stream of values.
-%% It can be used to eg. `discover' the data type stored in a table
-%% (column, etc.)
 
 -export([ add/2
         , new/0
@@ -16,37 +51,20 @@
         , join_up/1
         ]).
 
+-export_type([ spec/0 ]).
+
 -ifdef(TEST).
 -export([ eq/2 ]).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% A data spec is represented as a hierarchical tree of
-%% type classes.
-%% Nodes of this tree are represented as tuples:
-%%
-%% {Class, Data, SubSpec}
-%%
-%% - Class is a term (in most cases an atom) describing
-%%   the type this node represents in the type hierarchy.
-%%
-%% - Data is node-specific data as a tuple:
-%%
-%%   {Stats, Ext}
-%%
-%%   - Stats is an instance of #stats{} with general statistics data, eg.:
-%%     - an integer count of data items captured by this type class
-%%     - an estimator of cardinality (number of different unique values)
-%%     - points of interest (min, max)
-%%     - an even sampling of the data values
-%%   - Ext is class-specific extra/extended data to hold
-%%     further attributes and/or statistics.
-%%
-%% - SubSpec is a list of child nodes. Depending on the kind of type
-%%   denoted by Class, this may be a list of subtypes or in case of
-%%   generic types, a list of specs corresponding to the elements
-%%   or fields of this type. The exact semantics of SubSpec are left
-%%   up to Class, but the tree is uniformly recursive through SubSpecs.
+-type spec() :: {class(), data(), [spec()]}.
+
+-type class() :: atom()
+               | {tuple, pos_integer()}
+               | {record, {atom(), pos_integer()}}.
+
+-type data() :: {ds_stats:stats(), ds_types:ext_data()}.
 
 %% Initialize a new data spec
 new() -> new(term).

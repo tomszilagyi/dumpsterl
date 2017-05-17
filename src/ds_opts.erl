@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_opts).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -37,7 +39,7 @@ opts() ->
     %% name          undefined     novalue
     [ {dump,         false,        "ds.bin",
        "filename() | 'false'",
-       "  dump the accumulated spec on each progress update, but at most once\n"
+       "  Dump the accumulated spec on each progress update, but at most once\n"
        "  every ten seconds (if progress output is enabled), and at the end.\n"
        "  - 'false': no dump is written;\n"
        "  - filename(): the accumulated spec is dumped to this file.\n"
@@ -109,6 +111,8 @@ keys() -> [Opt || {Opt,_Undefined,_Novalue,_TypeStr,_HelpStr} <- opts()].
 
 setopts(Opts) -> put(?PROCDICT_KEY, normalize_opts(Opts)).
 
+%% This function must be called only with Opts that were obtained as
+%% the return value of normalize_opts/1.
 setopts_raw(Opts) -> put(?PROCDICT_KEY, Opts).
 
 getopts() ->

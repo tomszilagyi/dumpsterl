@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_graphics).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -150,7 +152,7 @@ graph(Type, Attributes0, Data, GnuplotExecutable) ->
     Plt = fill_attrs(binary_to_list(TemplateBin), Attributes),
     ok = file:write_file(PltFile, Plt),
     ok = file:write_file(DatFile, format_csv(Data)),
-    os:cmd(GnuplotExecutable ++ " " ++ PltFile),
+    _ = os:cmd(GnuplotExecutable ++ " " ++ PltFile),
     ok = file:delete(DatFile),
     ok = file:delete(PltFile),
     PngFile.

@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_gui).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -92,14 +94,14 @@ do_init([Server, Spec] = Config) ->
 
     Text1 = wxStaticText:new(TopLeftPanel, ?wxID_ANY, " Stack", []),
     set_window_font_bold(Text1),
-    wxSizer:addSpacer(TopLeftSizer, 3),
-    wxSizer:add(TopLeftSizer, Text1, []),
-    wxSizer:addSpacer(TopLeftSizer, 3),
+    _ = wxSizer:addSpacer(TopLeftSizer, 3),
+    _ = wxSizer:add(TopLeftSizer, Text1, []),
+    _ = wxSizer:addSpacer(TopLeftSizer, 3),
 
     LC_Stack = wxListCtrl:new(TopLeftPanel,
                               [{winid, ?LIST_CTRL_STACK},
                                {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
-    wxSizer:add(TopLeftSizer, LC_Stack, SizerOpts),
+    _ = wxSizer:add(TopLeftSizer, LC_Stack, SizerOpts),
     setup_child_list_cols(LC_Stack, false),
     wxListCtrl:connect(LC_Stack, command_list_item_selected, []),
     wxListCtrl:connect(LC_Stack, size, [{skip, true}]),
@@ -110,21 +112,21 @@ do_init([Server, Spec] = Config) ->
 
     TextChildren = wxStaticText:new(BottomLeftPanel, ?wxID_ANY, "", []),
     set_window_font_bold(TextChildren),
-    wxSizer:addSpacer(BottomLeftSizer, 3),
-    wxSizer:add(BottomLeftSizer, TextChildren, []),
-    wxSizer:addSpacer(BottomLeftSizer, 3),
+    _ = wxSizer:addSpacer(BottomLeftSizer, 3),
+    _ = wxSizer:add(BottomLeftSizer, TextChildren, []),
+    _ = wxSizer:addSpacer(BottomLeftSizer, 3),
 
     LC_Children = wxListCtrl:new(BottomLeftPanel,
                                  [{winid, ?LIST_CTRL_CHILDREN},
                                   {style, ?wxLC_REPORT bor ?wxLC_SINGLE_SEL}]),
-    wxSizer:add(BottomLeftSizer, LC_Children, SizerOpts),
+    _ = wxSizer:add(BottomLeftSizer, LC_Children, SizerOpts),
     setup_child_list_cols(LC_Children, false),
     wxListCtrl:connect(LC_Children, command_list_item_selected, []),
 
     wxSplitterWindow:splitHorizontally(LeftSplitter, TopLeftPanel, BottomLeftPanel),
     wxSplitterWindow:setSashGravity(LeftSplitter, 0.5),
     wxSplitterWindow:setMinimumPaneSize(LeftSplitter, 1),
-    wxSizer:add(LeftSizer, LeftSplitter, SizerOpts),
+    _ = wxSizer:add(LeftSizer, LeftSplitter, SizerOpts),
 
     RightPanel = wxPanel:new(Splitter, []),
     RightSizer = wxBoxSizer:new(?wxVERTICAL),
@@ -136,13 +138,13 @@ do_init([Server, Spec] = Config) ->
                   scrollwin_lineup, scrollwin_linedown,
                   scrollwin_pageup, scrollwin_pagedown,
                   scrollwin_thumbtrack, scrollwin_thumbrelease]],
-    wxSizer:add(RightSizer, ReportHtmlWin, SizerOpts),
+    _ = wxSizer:add(RightSizer, ReportHtmlWin, SizerOpts),
 
     %% Main vertical splitter
     wxSplitterWindow:splitVertically(Splitter, LeftPanel, RightPanel),
     wxSplitterWindow:setSashGravity(Splitter, 0.5),
     wxSplitterWindow:setMinimumPaneSize(Splitter, 1),
-    wxSizer:add(Sizer, Splitter, SizerOpts),
+    _ = wxSizer:add(Sizer, Splitter, SizerOpts),
 
     wxFrame:show(Frame),
     State = #state{config=Config, frame=Frame, panel_main=Panel,
@@ -178,7 +180,7 @@ handle_event(#wx{event = #wxHtmlLink{linkInfo = #wxHtmlLinkInfo{href=Link}}},
     ReportCfg = ds_reports:config_update(ReportCfg0, Link),
     {noreply, update_report(State#state{report_cfg=ReportCfg})};
 handle_event(#wx{event = #wxScrollWin{}},
-	     #state{report_html_win=ReportHtmlWin} = State) ->
+             #state{report_html_win=ReportHtmlWin} = State) ->
     ScrollPos = wxScrolledWindow:getViewStart(ReportHtmlWin),
     {noreply, State#state{report_scroll_pos=ScrollPos}};
 handle_event(#wx{event = #wxKey{controlDown=true, keyCode=$+}},
@@ -206,7 +208,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 code_change(_, _, State) ->
-    {stop, ignore, State}.
+    {ok, State}.
 
 terminate(_Reason, _State) ->
     ok.

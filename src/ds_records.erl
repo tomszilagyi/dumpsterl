@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_records).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -76,7 +78,7 @@ do_mnesia_schema(SchemaFile) ->
     io:format("collecting record attributes from ~s ... ", [SchemaFile]),
     {ok, _} = dets:open_file(schema, [{file, SchemaFile}, {repair, false}, {keypos, 2}]),
     R = lists:usort(dets:traverse(schema, fun dets_traverse_f/1)),
-    dets:close(schema),
+    ok = dets:close(schema),
     io:format("read ~B records.\n", [length(R)]),
     [{RecId, Attrs, {schema, SchemaFile}} || {RecId, Attrs} <- R].
 

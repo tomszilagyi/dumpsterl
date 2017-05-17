@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_types).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -14,6 +16,8 @@
         , ext_join/3
         ]).
 
+-export_type([ ext_data/0 ]).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -25,6 +29,8 @@
 -else.
 -define(is_map(X), false).
 -endif.
+
+-opaque ext_data() :: list().
 
 %% Category, or "kind", of type.
 %% Each type belongs to one of three kinds:
@@ -86,7 +92,7 @@ pp_spec(Spec) ->
 
 %% Convert a spec to an Erlang abstract type definition form
 spec_to_form(Spec) ->
-    {attribute, 1, type, {t, spec_to_form_1(Spec), []}}.
+    {attribute, anno(1), type, {t, spec_to_form_1(Spec), []}}.
 
 spec_to_form_1({term,_Data, []}) ->
     {type, 1, term, []};
@@ -137,6 +143,13 @@ flatten_union(SpecL) ->
     lists:flatmap(fun({type, 1, union, SL}) -> SL;
                      (T) -> [T]
                   end, SpecL).
+
+%% This is needed for the sake of dialyzer correctness.
+-ifdef(CONFIG_ERL_ANNO).
+anno(LN) -> erl_anno:from_term(LN).
+-else.
+anno(LN) -> LN.
+-endif.
 
 
 %% For generic types, this function returns a list of attributes.

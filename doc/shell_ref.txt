@@ -1,0 +1,136 @@
+Dumpsterl interactive probe shell;
+start it via typing `ds:shell()' into the Erlang shell.
+
+
+Commands:
+
+gui [<dumpfile>]
+  Launch gui reading the currently configured dump file,
+  or the dump file specified by the argument, if present.
+
+help [<keyword>]
+  Display help for dumpsterl commands, params and options.
+  Type:
+  - 'help' to get a list of valid commands.
+  - 'help <keyword>' to get help specific to a keyword.
+  - 'help commands' to get help for all valid commands.
+  - 'help params' to get help for all valid params.
+  - 'help options' to get help for all valid options.
+  - 'help all' to print all help output.
+
+quit
+  Quit the Dumpsterl shell, giving control back to the Erlang shell.
+  The probe, if running, will be stopped cleanly.
+
+run
+  Run the probe with current parameters and options.
+
+set <param|option> <value>
+  Set given param or option to supplied value.
+  Type 'help params' to get help for all valid params.
+  Type 'help options' to get help for all valid options.
+
+show [<param|option> ...]
+  Show currently configured parameter and option values.
+  Issued without arguments, 'show' will print a table with all.
+  configuration values. When given a list of param or option names,
+  output will be restricted to those only.
+
+stop
+  If the probe is running, stop it cleanly. Even if the probe is stopped
+  this way before reaching its set `limit' or end of table, the spec will
+  be properly closed, so that the spec will fully contain all information
+  corresponding to the final reported record count.
+
+
+Params:
+
+attrs
+  Attribute selector list to specify metadata attributes.
+  Syntax: [{Attr, FieldSelector}, ...] where FieldSelector selects
+          the source of data to use for attribute Attr.
+          See param `field' for the syntax of FieldSelector.
+  Attributes currently utilized by the gui:
+  - 'key': Record key to associate with data from the record;
+  -  'ts': Timestamp to associate with data from the record.
+
+field
+  Record/tuple field to select for inspection. Supported formats:
+  - 0 or []: spec the whole record;
+  - pos_integer(): spec the selected field;
+  - [pos_integer()]: list of chained field references to select data
+       from embedded tuples or records. E.g. [3,2] is interpreted as:
+       ``take the third field from the record read from the table, then
+         take the second field of it to be processed by dumpsterl.''
+  If the referenced field does not exist, the record is skipped from the
+  spec (but counts toward the limit and shows up in the output count).
+
+table
+  The table to read. Its accepted format depends on the `type' setting:
+  - mnesia or ets table name (atom);
+  - ets table id (integer);
+  - dets table name (any term) for an already opened dets table;
+  - filename of a dets table or disk_log file.
+
+type
+  Type of table. This selects the table driver for the probe.
+  Valid types: dets | disk_log | ets | mnesia
+
+
+Options:
+
+dump: filename() | 'false'
+  Dump the accumulated spec on each progress update, but at most once
+  every ten seconds (if progress output is enabled), and at the end.
+  - 'false': no dump is written;
+  - filename(): the accumulated spec is dumped to this file.
+  NB. in case of parallel probe execution (see `procs' option), only
+  the master process dumps its spec. With procs=N, only 1/N of the
+  whole spec is periodically dumped. Naturally, the entire result
+  is collected and dumped on completion (or in response to `stop').
+
+hll_b: 4..16 | 'false'
+  Parameter 'b' (base 2 log of substream count) of the hyperloglog
+  cardinality estimator. Larger values exponentially increase the
+  storage requirement and marginally improve estimation precision.
+  A setting of 'false' disables cardinality estimation.
+
+limit: pos_integer() | 'infinity'
+  Limit the number of records to process. In case reads are done in
+  chunks of several records (such as with disk_logs), the limit might
+  be slightly exceeded. Defaults to 1000, which is a safely low value.
+  A setting of 'infinity' enables processing the whole table.
+
+mnesia_dir: dirname() | 'undefined'
+  The name of the mnesia directory where table data files are stored.
+  This option is useful if the Erlang node running dumpsterl does not
+  run a Mnesia instance, but has access to the database filesystem.
+
+procs: pos_integer()
+  Number of parallel processes to use when running the probe.
+  Defaults to the number of logical processors as reported by ERTS.
+
+progress: number() | 'false'
+  Output progress information and (if dump is enabled) write interim
+  dumps.
+  - 'false': no output
+  - T: update progress info every T seconds
+       (achieved update frequency is limited by read granularity)
+
+rec_attrs: 'true' | 'false' | 'force'
+  Collect record attributes and include them in the spec with the
+  data referencing it.
+  - 'true':  collect data once at the beginning of first run;
+  - 'false': turn off completely;
+  - 'force': force (re)collection even if attributes have been already
+             collected; useful if code has been changed in the system.
+
+samples: pos_integer() | 'false' | 'infinity'
+  Maximum number of samples to collect at each spec node.
+  NB.: using 'infinity' is definitely not recommended, as the spec
+  size will grow without bounds unless the number of processed
+  records is limited to a small number!
+
+term: 'dumb' | 'vt100'
+  Terminal setting useful to override the $TERM environment variable;
+  set it to 'dumb' to forcibly disable progress line rewrites.

@@ -73,6 +73,15 @@ else
     echo "-undef(CONFIG_MAPS)." >> $CONFIG
 fi
 
+# The erl_anno module was added in R18
+if [ $ERLANG_OTP_RELEASE -ge 18 ] ; then
+    echo " - erl_anno module: yes"
+    echo "-define(CONFIG_ERL_ANNO, true)." >> $CONFIG
+else
+    echo " - erl_anno module: no"
+    echo "-undef(CONFIG_ERL_ANNO)." >> $CONFIG
+fi
+
 echo >> $CONFIG
 echo "-endif." >> $CONFIG
 echo "Configuration written to $CONFIG"

@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_shell).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -56,13 +58,7 @@ default_table(ets) ->
                 [FirstAtom|_] -> FirstAtom;
                 [] -> hd(AllTables)
             end
-    end;
-default_table(mnesia) ->
-    case tables(mnesia) of
-        [] -> undefined;
-        Tables -> hd(Tables)
-    end;
-default_table(_Type) -> undefined.
+    end.
 
 tables(ets) ->
     ets:all();
@@ -75,13 +71,13 @@ tables(mnesia) ->
     end.
 
 repl(State0) ->
-    io:setopts([{expand_fun, mk_expand_fun(State0)}]),
+    ok = io:setopts([{expand_fun, mk_expand_fun(State0)}]),
     Line = io:get_line(?PROMPT),
     State = wait_for_probe(0, State0),
     print_statusline(Line, State),
     case Line of
         "quit" ++ _ ->
-            stop_probe(State),
+            _ = stop_probe(State),
             ok; %% exit
         "\n" ->
             ?MODULE:repl(State);
@@ -173,7 +169,7 @@ print_statusline(Line, _State) ->
 reprint_prompt_line(_Line, "dumb") -> ok;
 reprint_prompt_line(Line, "vt100") ->
     %% reprint prompt one above of where it was
-    io:fwrite([line_up_and_erase(), line_up_and_erase(), ?PROMPT, Line]).
+    io:put_chars([line_up_and_erase(), line_up_and_erase(), ?PROMPT, Line]).
 
 eval_cmd("set " ++ ArgsStr, State) ->
     case string:tokens(ArgsStr, " \r\n\t") of
@@ -190,7 +186,7 @@ eval_cmd("show" ++ ParamsStr, State) ->
                        ?PARAMS;
                  _  -> Params0
              end,
-    [show_param(P, State) || P <- Params],
+    _ = [show_param(P, State) || P <- Params],
     State;
 eval_cmd("run\n", State) ->
     case check_params(State) of
@@ -535,10 +531,10 @@ gui(ParamStr, State) ->
     end.
 
 start_gui(DumpFile, State) ->
-    case filelib:is_regular(DumpFile) of
-        true -> ds_gui:start(DumpFile);
-        false -> io:format("Cannot access dump file: ~p~n", [DumpFile])
-    end,
+    _ = case filelib:is_regular(DumpFile) of
+            true -> ds_gui:start(DumpFile);
+            false -> io:format("Cannot access dump file: ~p~n", [DumpFile])
+        end,
     State.
 
 
@@ -596,14 +592,14 @@ set_statusline_pid(StatusLinePid) ->
     put(statusline_pid, StatusLinePid).
 
 set_statusline(IoData) ->
-    case get_statusline_pid() of
-        undefined -> ok;
-        Pid  -> Pid ! {statusline, IoData}
-    end,
-    io:fwrite([line_up_and_erase(), IoData, $\n]).
+    _ = case get_statusline_pid() of
+            undefined -> ok;
+            Pid  -> Pid ! {statusline, IoData}
+        end,
+    io:put_chars([line_up_and_erase(), IoData, $\n]).
 
 line_up_and_erase() -> line_up_and_erase(ds_opts:getopt(term)).
 
 %% This is the only terminal-specific bit.
 line_up_and_erase("vt100") -> "\e[A\e[2K";
-line_up_and_erase("dumb")  -> "".
+line_up_and_erase(_)       -> "".

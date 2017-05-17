@@ -1,4 +1,18 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
+%% @doc Statistics for dumpsterl type spec tree nodes.
+%%
+%% API note:
+%%
+%% By convention, data structure modules need to handle the special
+%% case of being disabled. In this case, their new/1 function receives
+%% 'false' as argument and the atom 'undefined' must be returned.
+%%
+%% Other API functions add/2, join/2 etc.  must handle an 'undefined'
+%% instance in an appropriate way (possibly returning 'undefined' as
+%% the resulting version).
+
 -module(ds_stats).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
@@ -10,6 +24,8 @@
         , get_samples/1
         , get_cardinality/1
         ]).
+
+-export_type([ stats/0 ]).
 
 -ifdef(TEST).
 -export([ eq/2 ]).
@@ -23,15 +39,7 @@
                  hyperloglog
                }).
 
-%% @doc API note:
-%%
-%% By convention, data structure modules need to handle the special
-%% case of being disabled. In this case, their new/1 function receives
-%% 'false' as argument and the atom 'undefined' must be returned.
-%%
-%% Other API functions add/2, join/2 etc.  must handle an 'undefined'
-%% instance in an appropriate way (possibly returning 'undefined' as
-%% the resulting version).
+-opaque stats() :: #stats{}.
 
 new() ->
     Pts = pts_new(),

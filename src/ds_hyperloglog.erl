@@ -1,4 +1,6 @@
 %% -*- coding: utf-8 -*-
+
+%% @private
 -module(ds_hyperloglog).
 -author("Tom Szilagyi <tomszilagyi@gmail.com>").
 
