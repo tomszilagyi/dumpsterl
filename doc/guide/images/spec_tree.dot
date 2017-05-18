@@ -1,0 +1,28 @@
+# Example spec tree structure for:
+# term() :: atom() | [{[byte()], char()}]
+digraph spec_tree {
+    graph [ dpi = 75 ];
+    node [fontname="NewCenturySchlbk-Roman"];
+    ordering=out;
+    pad=0.02;
+    bgcolor=transparent;
+
+    node [shape=record, fontsize=17.0];
+    edge [fontsize=18.0];
+
+    term [label="<class> term|<data> Data|<children> Children"];
+
+    atom [label="<class> atom|<data> Data|<children> Children"];
+    nonempty_list [label="<class> nonempty_list|<data> Data|<children> Children"];
+    tuple [label="<class> tuple/2|<data> Data|<children> Children"];
+    nonempty_list_2 [label="<class> nonempty_list|<data> Data|<children> Children"];
+    byte [label="<class> byte|<data> Data|<children> Children"];
+    char [label="<class> char|<data> Data|<children> Children"];
+
+    term:children:s -> atom:n [label=<alt<SUB>1</SUB>>];
+    term:children:s -> nonempty_list:n [label=<alt<SUB>2</SUB>>];
+    nonempty_list:children:s -> tuple:n [label=< attr<SUB>1</SUB>>];
+    tuple:children:s -> nonempty_list_2:n [xlabel=<attr<SUB>1</SUB>>];
+    tuple:children:s -> char:n [label=<attr<SUB>2</SUB>>];
+    nonempty_list_2:children:s -> byte:n [label=< attr<SUB>1</SUB>>];
+}

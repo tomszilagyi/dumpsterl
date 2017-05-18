@@ -120,7 +120,7 @@ common_prefix_test() ->
 
 cut_cwd_test() ->
     {ok, Cwd} = file:get_cwd(),
-    Rel = filename:join([doc, src]),
+    Rel = filename:join([doc, guide]),
     Abs = filename:join(Cwd, Rel),
     ?assertEqual(Rel, cut_cwd(Abs)),
     ?assertEqual(Rel, cut_cwd(Rel)),

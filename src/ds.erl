@@ -197,14 +197,16 @@ probe(Type, Tab, ProbeSpec, Opts) -> ds_probe:start(Type, Tab, ProbeSpec, Opts).
 new() -> ds_spec:new().
 
 %% @doc <b>[Spec API]</b> Add a term (without attributes) to the spec.
+%% Due to the order of the arguments, this function can be directly
+%% passed to lists:foldl/3.
 %% @equiv add(Term, [], Spec)
 -spec add(term(), spec()) -> spec().
 add(Term, Spec) -> ds_spec:add({Term, []}, Spec).
 
 %% @doc <b>[Spec API]</b> Add a term (with attributes) to the spec.
-%% Due to the order of the arguments, this function can be directly
-%% passed to lists:foldl/3. The attr specs in `Attrs' reference `Term'.
--spec add(term(), [attr_spec()], spec()) -> spec().
+%% The attributes must be passed directly as a list of key-value
+%% tuples.
+-spec add(term(), [{AttrName::atom(), AttrValue::term()}], spec()) -> spec().
 add(Term, Attrs, Spec) when is_list(Attrs) ->
     ds_spec:add({Term, Attrs}, Spec).
 

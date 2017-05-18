@@ -1,0 +1,11 @@
+Dumpsterl User Guide
+====================
+
+This documentation is written in AsciiDoc.
+Some images are generated with graphviz.
+
+You need to have a recent version of asciidoctor installed; please see
+http://asciidoctor.org. The `asciidoctor' script must be available in
+your $PATH.
+
+You also need the `dot' executable of graphviz available in your $PATH.

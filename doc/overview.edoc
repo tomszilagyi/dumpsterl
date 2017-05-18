@@ -5,7 +5,7 @@ user-friendly framework for data exploration in NoSQL environments.
 
 Read these to get started:
 <ul>
-<li>The <a href="html/index.html">Dumpsterl User Guide</a>.</li>
+<li>The <a href="guide/book.html">Dumpsterl User Guide</a>.</li>
 <li>The <a href="shell_ref.txt">Dumpsterl shell quick reference</a>.</li>
 <li>The module <a href="ds.html">ds</a> specifies the API of Dumpsterl.</li>
 </ul>

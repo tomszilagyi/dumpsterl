@@ -1,13 +1,11 @@
 digraph type_hierarchy {
+        graph [ dpi = 75 ];
         rankdir=LR;
         node [fontname="NewCenturySchlbk-Roman"];
         ordering=out;
-        pad=0.25;
+        pad=0.02;
 
-        fontsize=24;
-        label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD VALIGN="top" HEIGHT="48">Erlang type hierarchy (as seen by Dumpsterl)</TD></TR></TABLE>>;
-        labelloc=top;
-        labeljust=center;
+        bgcolor=transparent;
 
         {
                 node [style=filled; fillcolor="#D0D0D0"];

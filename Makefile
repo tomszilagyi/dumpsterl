@@ -5,10 +5,13 @@ PROJECT_VERSION = 0.5.0
 # Whitespace to be used when creating files from templates.
 SP = 4
 
-DEPS = asciideck
+DEPS =
 
 PLT_APPS = erts kernel stdlib compiler crypto mnesia wx
 DIALYZER_OPTS = -Wunmatched_returns
+
+# We want warnings to be warnings, not errors.
+ERLC_OPTS := $(filter-out -Werror,$(ERLC_OPTS))
 
 include erlang.mk
 
@@ -21,5 +24,14 @@ include/config.hrl:: configure.sh
 clean::
 	rm -f $(CONFIG_HRL)
 
-# We want warnings to be warnings, not errors.
-ERLC_OPTS := $(filter-out -Werror,$(ERLC_OPTS))
+distclean::
+	make -C doc/guide clean
+
+# Remove synthetically generated test data
+testclean:
+	rm -rf test/data
+
+docs:: asciidoc
+
+asciidoc:
+	make -C doc/guide

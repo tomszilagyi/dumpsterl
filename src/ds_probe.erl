@@ -24,35 +24,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% Go through a table to spec a field based on a limited number
-%% of rows processed (option 'limit' defaults to 1000):
-%%
-%%   ds_probe:spec(ets, my_table, #my_record.my_field)
-%%
-%% Sending 0 as ProbeSpec will process the whole record.
-%% Setting 'limit' to 'infinity' disables the limit (traverse whole table).
-%%
-%% Advanced usage exmaples:
-%%   progress indicator and output dump:
-%%     ds_probe:spec(mnesia, payment_rec, #payment_rec.primary_reference,
-%%                   [{limit, infinity}, progress, dump]).
-%%
-%%   chain field references to spec a sub-subfield on nested records:
-%%     ds_probe:spec(mnesia, kcase, [#kcase.payer_info, #payer_info.payer_bg]).
-%%
-%%   getter function for arbitrary data selection:
-%%     ProbeSpecF = fun(KC) -> KC#kcase.payer_info#payer_info.payer_bg end,
-%%     ds_probe:spec(mnesia, kcase, ProbeSpecF).
-%%
-%%   data attributes:
-%%     ds_probe:spec(mnesia, kcase,
-%%                   {#kcase.ocr, [{ts, #kcase.create_date}, {key, #kcase.cid}]},
-%%                   [{limit, infinity}, {progress, 0.5}, dump]).
-%%
-%%   NB. using a getter fun is slower than a chained reference (list of field numbers),
-%%   so use the fun only where a truly generic accessor is needed. Also, the fun might
-%%   throw an exception in certain cases to exclude those from the spec.
-
 -record(state,
         { status       % idle | spec_table | spec_disk_log
         , args         % original probe arguments
