@@ -8,10 +8,10 @@ user-friendly framework for data exploration in NoSQL environments.
 * Roadmap of planned changes
 
 ** General
-*** TODO documentation
-- [ ] README.md
-- [ ] EDoc should be generated and contain API documentation
-- [ ] AsciiDoc should be generated and contain user guide
+*** DONE documentation
+- [X] README
+- [X] EDoc should be generated and contain API documentation
+- [X] AsciiDoc should be generated and contain user guide
 *** DONE reorg modules
   - ds -> ds_core or ds_spec or ds_tree
   - ds should be an interface module and the only module the user has

@@ -4,6 +4,7 @@ deps
 dumpsterl.d
 ebin
 xrefr
+README.html
 doc/html
 doc/edoc-info
 doc/erlang.png

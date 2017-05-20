@@ -1,0 +1,22 @@
+= dumpsterl
+
+The purpose of *dumpsterl* is to provide a powerful, extensible and
+user-friendly framework for data exploration in NoSQL environments.
+
+Read these to get started:
+
+- The Dumpsterl User Guide:
+  link:doc/guide/book.html[(HTML)]
+  link:doc/guide/book.adoc[(Source)]
+
+- Dumpsterl shell link:doc/shell_ref.txt[reference]
+
+- link:doc/ds.html[API documentation]
+
+Further resources:
+
+- link:https://github.com/tomszilagyi/dumpsterl[Source code on GitHub]
+- link:https://tomszilagyi.github.io/dumpsterl/doc[Documentation online]
+- Dumpster Dive your Erlang data!
+  link:http://www.erlang-factory.com/euc2017/tom-szilagyi[Conference talk]
+  link:https://tomszilagyi.github.io/dumpsterl/tomszilagyi_euc2017.pdf[Handout]

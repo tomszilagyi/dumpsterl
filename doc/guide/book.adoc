@@ -39,8 +39,8 @@ be added to the testing pipeline as they become available.
 
 The list of operating systems will certainly be extended; the backend
 systems that inspired the creation of dumpsterl run on Linux. However,
-there is nothing fundamentally stopping dumpsterl to run on any other
-system where Erlang/OTP itself is supported.
+there should be nothing fundamentally stopping dumpsterl to run on any
+other system where Erlang/OTP itself is supported.
 
 
 === Known limitations
@@ -80,6 +80,16 @@ Enter your local repo and compile the project:
 $ cd dumpsterl
 $ make
 ----
+
+Optionally, if you want to run some tests to verify your installation,
+you may run one of:
+
+----
+$ make eunit <1>
+$ make check <2>
+----
+<1> EUnit tests (quick!)
+<2> EUnit tests, Common Test suites and Dialyzer (sloooow!)
 
 
 === First steps with dumpsterl
@@ -170,17 +180,17 @@ command link:../shell_ref.txt[here].
 
 ==== Try dumpsterl with the included test database
 
-Dumpsterl comes with a test suite, and as part of that, it includes a
-test data generator. This generator creates synthetic test data in
-either of the database formats supported by dumpsterl, so all of those
-can be tested interactively.
+Dumpsterl comes with a test suite, and as part of that, a test data
+generator. This generator creates synthetic test data in either of the
+database formats supported by dumpsterl, so all of those can be tested
+interactively.
 
-Since this is part of the test code that comes with dumpsterl, it
-needs to be recompiled with the test code also included. The easiest
-way to do this is to run the EUnit tests. This triggers a rebuild of
-the source with the test code compiled in. When that is done, start a
-shell just as before. Finally, the code path must be set up so the
-test-only modules will be found by the Erlang module loader.
+Since this is part of the test code that comes with dumpsterl, the
+source needs to be recompiled with the test code also included. The
+quickest way to do this is to run the EUnit tests. This triggers a
+rebuild of the source with the test code compiled in. When that is
+done, start a shell just as before. Finally, the code path must be set
+up so the test-only modules will be found by the Erlang module loader.
 
 ----
 $ make eunit
@@ -259,8 +269,62 @@ If you see a similar window, congratulations! You have dumpsterl up
 and running. Feel free to click and browse around!
 
 [TIP]
-You can increase the GUI font size with kbd:[Control + +] and decrease
-it with kbd:[Control + -].
+You can increase the GUI font size with kbd:[Ctrl + +] and decrease it
+with kbd:[Ctrl + -].
+
+.The GUI in a nutshell
+****
+
+The GUI allows you to browse the spec and make sense of it. In the top
+left quadrant, there is a list titled "`Stack`" showing the path down
+to the currently selected node (drawn with a solid blue background) in
+the type hierarchy. Each list item refers to a level in the type
+hierarchy, with the root type node at the top and each subsequent item
+referring to a child node of the item above.
+
+In the stack, attributes of generic types are prefixed with an
+indication of the attribute, e.g. the element type of the list is
+prefixed with `[items]:` and a prefix of `[E2]:` means that the
+current stack node is element 2 of the parent node (a tuple in this
+case). If there is no such prefix before the type, then this type is
+simply a subtype of its parent, a wider non-generic type.
+
+To navigate upwards in the tree, simply click on any of the stack
+items above the currently selected one.
+
+In the lower left corner we see the children of the current node. By
+clicking on any of them, we follow that child to get one level deeper
+down in the stack. If we are at a union or ordinary type, these are
+alternative subtypes of the current type. In this case the list has
+the caption "`Alternatives`". If we are looking at a generic type,
+like a tuple, a record, a map or a list, the list shows the type
+attributes of the current type with the caption "`Attributes`".
+
+On the right, a detailed report of the current type node is
+shown. First of all, a full type declaration in Erlang type syntax is
+printed. This shows the type structure of the data.
+
+Next, we get the count and cardinality of terms absorbed by the
+node. By cardinality we mean an estimate of the number of different
+unique values seen here. So we can tell if it is likely to be a unique
+value, or a factor with a few possible values.
+
+We also want to see actual samples of the data, because that is what
+helps our intuition kick in. It's a list of strings, but is it a list
+of usernames or a list of goods items? The samples are collected by a
+statistically sound algorithm, so we can make valid judgements based
+on them.
+
+There are further optional elements depending on the type and the set
+of attributes present. For example, if there are timestamps associated
+with the values, we get a graph titled "`Timeline of sampled values`".
+This graph shows the time extent of each sampled value.  Also,
+histograms are generated for lists and bitstrings (binaries) to show
+the length (size) distribution across the population. These histograms
+are based on all the data absorbed by this node, not just the ones
+sampled and thus explicitly listed in the report above.
+
+****
 
 Now that there are a few tables with some complex data to play with,
 you can also start the interactive shell and play around in there:
@@ -322,7 +386,7 @@ ds => gui
 
 === Running dumpsterl on your live system
 
-.Disclaimer
+.DISCLAIMER
 [IMPORTANT]
 --
 Dumpsterl comes with ABSOLUTELY NO WARRANTY. Please proceed ONLY if
@@ -417,15 +481,166 @@ have a huge amount of loaded code, the above output will take a few
 seconds to appear, so don't worry.
 
 
+==== Running the probe on raw Mnesia table files
+
+[IMPORTANT]
+--
+The features described in this section come with a number of caveats,
+so make sure you read everything and thoroughly understand the
+tradeoffs you are making before attempting any of these "`dirty`"
+methods. __The usual disclaimers apply doubly here!__
+--
+
+Dumpsterl supports directly reading the raw table files backing Mnesia
+tables. This capability is useful mostly if you do not have a running
+Mnesia instance on the Erlang node that runs the probe. Note, however,
+that the modules of your system should still be loaded, so that the
+probe can gather all the record attributes referenced by the data.
+
+Mnesia stores the data in different files under its database
+directory. The data of each table is stored in one or more files named
+after the table. The extension of the files indicates the file type
+that corresponds to the `storage_type` of the table:
+
+===== `.DAT` files
+
+Each `.DAT` file contains a regular DETS table that can be directly
+read by the dumpsterl probe via setting the parameter `type` to `dets`
+and the `table` to the filename of the `.DAT` file. The performance
+gain of skipping Mnesia is usually negligible, as iterating through a
+DETS table is generally quite slow.
+
+For each `ram_copies` table, Mnesia keeps a backup in a `.DAT` file.
+The table might be written by a running Mnesia at any time (the user
+can request this via `mnesia:dump_tables/1`). However, chances are
+good that the backup was last overwritten with the then-latest table
+contents last time Mnesia was stopped. So it might not be a good idea
+to work around Mnesia for a `ram_copies` table; it might be seriously
+out of date.
+
+The same kind of `.DAT` file is present also for `disc_only_copies`
+tables.  Naturally, this file is always up-to-date with the table
+contents.  Whether or not you want to touch a table file kept open by
+a running Mnesia instance is an entirely different question.  If you
+have the option to stop Mnesia, we strongly recommend that you do so.
+
+[WARNING]
+--
+
+Reading the file backing a DETS table kept open by Mnesia might result
+in an exception within the probe similar to this one:
+
+```
+=ERROR REPORT==== 22-May-2017::15:22:38 ===
+Error in process <0.3414.0> with exit value: {{badmatch,{error,{needs_repair,"test/data/db/widget_disconly.DAT"}}},[{ds_probe,open_dets_table,1,[{file,"src/ds_probe.erl"},{line,277}]},{ds_probe,init_fold,2,[{file,"src/ds_probe.erl"},{line,190}]},{ds_probe,spec,3,[{file,"...
+```
+
+Note the `{needs_repair, Filename}` part.
+
+If this happens, DON'T PANIC. Your data is safe. It's only that the
+DETS file is not properly closed yet (which is OK, since mnesia keeps
+it open), therefore dumpsterl can't open it for reading.  You just
+have to find another way to access the table -- the easiest is to just
+go via `mnesia`.
+
+--
+
+===== `.DCD` files
+
+For `disc_copies` tables, a pair of `.DCD` and `.DCL` files are
+usually found, although the `.DCL` is not always present. These files
+are `disk_log` files (accessible via the Erlang module with the same
+name, part of the `kernel` application). The files have different
+internal formats. A `.DCD` file holds the contents of a table at a
+certain point in time as a stream of records corresponding to table
+rows. The accompanying `.DCL` contains the "`database log`" with
+entries describing changes (inserts, deletes, updates) relative to the
+snapshot in the `.DCD`.
+
+Dumpsterl supports directly reading the `.DCD`, but not the
+`.DCL`. Reading the `.DCD` of a table skips all the overhead of going
+through Mnesia. It also yields much better probe parallelization
+(utilizing a larger number of cores, if you have them), because the
+`disk_log` is read very efficiently, in chunks that typically contain
+hundreds of rows. All you need to do is set the parameter `type` to
+`disk_log` and the `table` to the filename of the `.DCD` file. Note
+that in contrast to reading the file backing an opened DETS table,
+this should always work!
+
+The obvious downside is that the changes already accumulated in the
+`.DCL` log will not be taken into account. Simply put, you are not
+looking at the latest data. In practice, this usually means that the
+probe will have missed a small percentage of newly inserted records or
+changes to existing records. The effect is usually negligible if you
+want to get a general idea of the data in the table, but might be a
+problem if you are after the latest changes. In that case, there is
+another option to avoid going through mnesia: set `type` to `ets` and
+read the ets table with the same name.
+
+The following transcript shows setting up and running the probe on the
+`.DCD` of our synthetically generated mnesia test table.
+
+----
+> ds:shell().
+
+Dumpsterl interactive probe shell.
+Type 'quit' + <enter> to get back to the Erlang shell;
+     'help' + <enter> to get help.
+
+collecting record attributes from 170 loaded modules ... read 205 records.
+collecting record attributes from test/data/db/schema.DAT ... read 2 records.
+installed attributes for 206 records.
+ds => set type disk_log
+      type: disk_log
+
+ds => set table "test/data/db/widget_mnesia.DCD"
+     table: "test/data/db/widget_mnesia.DCD"
+
+ds => set limit infinity
+     limit: infinity
+
+ds => set attrs [{key,2}, {ts,3}]
+     attrs: [{key,2},{ts,3}]
+
+ds => run
+
+running probe on 4 parallel processes.
+processed 638,716 in 4:01.7 (2.64k records/sec), dumped 1,021,090 bytes
+spec dump: 1,053,643 bytes written to ds.bin
+probe finished.
+----
+
+[NOTE]
+--
+
+As seen above, we managed to read 638,716 records of the total 675,000
+in the mnesia table of our generated test database. In our case, the
+last 5% of all inserted rows did not reach the probe. Your case will
+probably differ due to different mnesia access patterns.
+
+--
+
+[TIP]
+--
+
+This section showed how to use the `dets` and `disk_log` table types
+to peek into the raw files backing mnesia tables. Naturally, you are
+free to use these table types to read any other DETS table or disk_log
+file!
+
+--
+
+
 ==== Inspecting the result
 
-On a live system, you don't want to run the GUI at all. So take the
-dump file generated by the probe and examine it on your local
-machine. In the above example, let's say that we were running the
-Erlang remote shell with the working directory at
-`/huge/erlang/system`. This means that all dump files, if we didn't
-include a path in their name, will be found in that directory.  So
-copy the dump to your local machine (we assume it was written to its
+On a live system, you don't want to run the GUI at all. To inspect the
+results, take the dump file generated by the probe and examine it on
+your local machine. In the above example, let's say that we were
+running the Erlang remote shell with the working directory at
+`/huge/erlang/system`; all dump files, if we didn't include a path in
+their name, will be found in that directory.
+
+Copy the dump to your local machine (we assume it was written to its
 default filename):
 
 ----
@@ -447,12 +662,12 @@ to `ds:gui/1`:
 
 === API examples
 
-For your inspiration, this section contains some typical usage
+For your inspiration, this section contains some basic usage
 examples of the lower level APIs. These can be used for manual work in
 the Erlang shell, but also open the door towards automating/scripting
-the collection of specs. The below examples work on the test database
-introduced earlier in this guide; adapt them to suit your own use.
-Please also refer to the link:../ds.html[API documentation].
+the process of collecting specs. The below examples work on the test
+database introduced earlier in this guide; adapt them to suit your own
+use.  Please also refer to the link:../ds.html[API documentation].
 
 All code examples in this chapter show commands to be run in the
 Erlang shell. For ease of copy-pasting them, the Erlang shell prompt
@@ -792,9 +1007,9 @@ general) to operate. In particular:
 To demonstrate the difference that step 1 means, let's look at the
 type definition derived from the joint spec we arrived at above. To do
 this, we use the function
-link:../ds.html#pretty_print-1[`ds:pretty_print/1`]. Apart from all
-the previous examples, here we show the Erlang shell prompt and the
-output as well:
+link:../ds.html#pretty_print-1[`ds:pretty_print/1`]. In contrast with
+all the previous examples, here we show the Erlang shell prompt and
+the output as well:
 
 .Pretty-print a raw spec
 [source,erlang]
@@ -833,10 +1048,10 @@ changed to the most specific subtype that fits the data. This is the
 result of cutting out those abstract types that did not absorb any
 terms by themselves, and had only one subtype as their child.
 
-It is not apparent from the above that the statistics (e.g., the count
-of terms in each node) have been propagated upwards into the abstract
-nodes. Only after this step do the parent nodes contain the correct
-occurrence counts.
+What is not so apparent from the above is that the statistics (e.g.,
+the count of terms in each node) have been propagated upwards into the
+abstract nodes. Only after this step do the parent nodes contain the
+correct occurrence counts.
 
 [NOTE]
 --
@@ -848,6 +1063,13 @@ to be aware of post-processing, as it will be handled automatically.
 However, when manipulating specs by hand, you need to be aware of this
 step. In particular, you cannot `add` or `join` specs that have been
 post-processed.
+--
+
+[WARNING]
+--
+Post-processing the spec is not an idempotent operation. Running
+`ds:postproc/1` on a spec that is already the result of this function
+will lead to undefined results (false counts and statistics).
 --
 
 

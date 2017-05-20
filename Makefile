@@ -25,13 +25,17 @@ clean::
 	rm -f $(CONFIG_HRL)
 
 distclean::
+	rm -f README.html
 	make -C doc/guide clean
 
 # Remove synthetically generated test data
 testclean:
 	rm -rf test/data
 
-docs:: asciidoc
+docs:: guide README.html
 
-asciidoc:
+guide:
 	make -C doc/guide
+
+README.html: README.adoc
+	asciidoctor $^
