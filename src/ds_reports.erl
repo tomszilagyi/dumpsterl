@@ -117,7 +117,10 @@ range_graph(true, Attrs, Pts, Samples, ReportCfg) ->
                 [Row || {_V,_C, MinTS, MaxTS} = Row <- Data1,
                         MinTS /= undefined, MaxTS /= undefined]
         end,
+    do_range_graph(Data, ReportCfg).
 
+do_range_graph([],_ReportCfg) -> [];
+do_range_graph(Data, ReportCfg) ->
     {width, Width} = config_lookup(report, width, ReportCfg),
     PngFile = ds_graphics:timestamp_range_graph([{xsize, Width-40}], %% FIXME
                                                 lists:reverse(Data)),
