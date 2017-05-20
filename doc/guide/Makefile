@@ -8,8 +8,8 @@ PNG = images/dumpsterl_gui.png $(GEN_PNG)
 
 all: book.html
 
-book.html: book.asciidoc $(PNG)
-	asciidoctor book.asciidoc
+book.html: book.adoc $(PNG)
+	asciidoctor book.adoc
 
 $(GEN_PNG):%.png: %.dot
 	dot -Tpng -o $@ $^
