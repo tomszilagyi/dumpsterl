@@ -8,6 +8,7 @@ README.html
 doc/html
 doc/edoc-info
 doc/erlang.png
+doc/shell_ref.txt
 doc/stylesheet.css
 doc/*.html
 doc/*.pdf

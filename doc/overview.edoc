@@ -13,7 +13,7 @@ Read these to get started:
 Further resources:
 <ul>
 <li><a href="https://github.com/tomszilagyi/dumpsterl">Source code on Github</a></li>
-<li><a href="https://tomszilagyi.github.io/dumpsterl/doc">Documentation online</a></li>
+<li><a href="https://tomszilagyi.github.io/dumpsterl/doc/overview-summary.html">Documentation online</a></li>
 <li>Dumpster Dive your Erlang data!
     <a href="http://www.erlang-factory.com/euc2017/tom-szilagyi">[Conference talk]</a>
     <a href="https://tomszilagyi.github.io/dumpsterl/tomszilagyi_euc2017.pdf">[Handout]</a>

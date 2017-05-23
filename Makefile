@@ -24,18 +24,27 @@ include/config.hrl:: configure.sh
 clean::
 	rm -f $(CONFIG_HRL)
 
-distclean::
-	rm -f README.html
-	make -C doc/guide clean
+distclean:: docs-clean
 
 # Remove synthetically generated test data
 testclean:
 	rm -rf test/data
 
-docs:: guide README.html
+docs:: guide doc/shell_ref.txt README.html
 
 guide:
 	make -C doc/guide
 
+doc/shell_ref.txt:
+	echo "Dumpsterl interactive probe shell;" > $@
+	echo "start it via typing \`ds:shell().' into the Erlang shell." >> $@
+	echo >> $@
+	erl -pa ebin -noshell -eval 'ds_shell:help("all", state), init:stop().' >> $@
+
 README.html: README.adoc
 	asciidoctor $^
+
+docs-clean:
+	rm -f README.html
+	rm -f doc/shell_ref.txt
+	make -C doc/guide clean

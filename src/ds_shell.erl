@@ -10,6 +10,9 @@
         , set_statusline_pid/1
         ]).
 
+%% exported so we can `make' doc/shell_ref.txt
+-export([ help/2 ]).
+
 %% exported for external calls & spawn_*
 -export([ repl/1
         , statusline_srv/0
@@ -384,11 +387,11 @@ help("help"++_, State) ->
       "\nhelp [<keyword>]\n"
       "  Display help for dumpsterl commands, params and options.\n"
       "  Type:\n"
-      "  - 'help' to get a list of valid commands.\n"
-      "  - 'help <keyword>' to get help specific to a keyword.\n"
-      "  - 'help commands' to get help for all valid commands.\n"
-      "  - 'help params' to get help for all valid params.\n"
-      "  - 'help options' to get help for all valid options.\n"
+      "  - 'help' to get a list of valid commands;\n"
+      "  - 'help <keyword>' to get help specific to a keyword;\n"
+      "  - 'help commands' to get help for all valid commands;\n"
+      "  - 'help params' to get help for all valid params;\n"
+      "  - 'help options' to get help for all valid options;\n"
       "  - 'help all' to print all help output.\n"
 ),
     State;
@@ -414,7 +417,7 @@ help("show"++_, State) ->
     io:fwrite(
       "\nshow [<param|option> ...]\n"
       "  Show currently configured parameter and option values.\n"
-      "  Issued without arguments, 'show' will print a table with all.\n"
+      "  Issued without arguments, 'show' will print a table with all\n"
       "  configuration values. When given a list of param or option names,\n"
       "  output will be restricted to those only.\n"),
     State;
@@ -423,8 +426,8 @@ help("stop"++_, State) ->
       "\nstop\n"
       "  If the probe is running, stop it cleanly. Even if the probe is stopped\n"
       "  this way before reaching its set `limit' or end of table, the spec will\n"
-      "  be properly closed, so that the spec will fully contain all information\n"
-      "  corresponding to the final reported record count.\n"),
+      "  be properly closed, so it will contain all information corresponding to\n"
+      "  the final reported record count.\n"),
     State;
 
 %% params:

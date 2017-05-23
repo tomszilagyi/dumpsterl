@@ -318,7 +318,7 @@ on them.
 There are further optional elements depending on the type and the set
 of attributes present. For example, if there are timestamps associated
 with the values, we get a graph titled "`Timeline of sampled values`".
-This graph shows the time extent of each sampled value.  Also,
+This graph shows the temporal extent of each sampled value.  Also,
 histograms are generated for lists and bitstrings (binaries) to show
 the length (size) distribution across the population. These histograms
 are based on all the data absorbed by this node, not just the ones
@@ -451,7 +451,7 @@ $ cd dumpsterl
 $ make
 ----
 
-[IMPORTANT]
+[WARNING]
 Please make sure that the Erlang version you use to compile dumpsterl
 is the same as the version your system is running with. Since you are
 on the same host, this should be easily doable, but worth keeping in
