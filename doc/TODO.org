@@ -307,10 +307,10 @@ see them in action.
 - [ ] at the top of report
       - enable/disable attribute columns in report
       - save/export report page
-*** TODO Allow setting timestamp decoder function
-- provide a way to manually supply timestamp format function
-  e.g. if it turns out the ts is in gregorian seconds, allow
-  user to set fun calendar:gregorian_seconds_to_datetime/1.
+*** TODO Timestamp decoder function
+- [X] automatically decode most common timestamp formats
+- [ ] provide a way to manually supply timestamp decoder function
+
 *** TODO Manage record attributes
 - button next to "Type parameters" if record
 - button opens "Record attributes" window

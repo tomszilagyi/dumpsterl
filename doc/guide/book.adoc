@@ -8,7 +8,7 @@ Tom Szilagyi
 :icons: font
 :experimental:
 
-The purpose of Dumpsterl is to provide a powerful, extensible and
+The purpose of *dumpsterl* is to provide a powerful, extensible and
 user-friendly framework for data exploration in NoSQL environments.
 
 Besides the material in this guide, there is also
@@ -55,14 +55,8 @@ versions.
   integers is not possible. The Erlang syntax of referring to a record
   field via `#Record.Field` is also not supported here. Note that all
   these are perfectly working via the Probe API, so if you need these
-  features, please use that API. Examples to do that are provided in
-  section <<Probe API>>.
-
-- The `ts` attribute for associating timestamps with the data has to
-  be an integer encoding gregorian seconds. If you have timestamps in
-  a different format, use an appropriate converter fun() as the `ts`
-  attribute spec. Other timestamp formats will not cause problems in
-  the probe, but will have undefined consequences in the GUI.
+  features, please use that API. Examples are provided in the
+  <<Probe API>> section.
 
 
 === Obtaining and compiling dumpsterl
@@ -454,8 +448,7 @@ $ make
 [WARNING]
 Please make sure that the Erlang version you use to compile dumpsterl
 is the same as the version your system is running with. Since you are
-on the same host, this should be easily doable, but worth keeping in
-mind.
+on the same host, this should be easy, but worth keeping in mind.
 
 Now, go to your system's Erlang (remote) console and add the dumpsterl
 BEAM path to the code path. This makes dumpsterl usable on your
@@ -515,8 +508,8 @@ The table might be written by a running Mnesia at any time (the user
 can request this via `mnesia:dump_tables/1`). However, chances are
 good that the backup was last overwritten with the then-latest table
 contents last time Mnesia was stopped. So it might not be a good idea
-to work around Mnesia for a `ram_copies` table; it might be seriously
-out of date.
+to work around Mnesia for a `ram_copies` table; the on-disk backup
+might be seriously out of date.
 
 The same kind of `.DAT` file is present also for `disc_only_copies`
 tables.  Naturally, this file is always up-to-date with the table
@@ -527,8 +520,8 @@ have the option to stop Mnesia, we strongly recommend that you do so.
 [WARNING]
 --
 
-Reading the file backing a DETS table kept open by Mnesia might result
-in an exception within the probe similar to this one:
+Reading a DETS table file kept open by Mnesia might result in an
+exception within the probe similar to this one:
 
 ```
 =ERROR REPORT==== 22-May-2017::15:22:38 ===
@@ -660,7 +653,7 @@ to `ds:gui/1`:
 ----
 
 
-=== API examples
+=== API examples [[api-examples]]
 
 For your inspiration, this section contains some basic usage
 examples of the lower level APIs. These can be used for manual work in
@@ -939,38 +932,60 @@ function link:../ds.html#add-3[`ds:add/3`].
 .Create a spec and add some values with attributes
 [source,erlang]
 ----
-TS = fun() -> calendar:datetime_to_gregorian_seconds(  <1>
-                  calendar:local_time())
-     end.
-S4 = ds:new().                                         <2>
-S5 = ds:add(an_atom, [{key, 1}, {ts, TS()}], S4).      <3>
-S6 = ds:add(123, [{key, 2}, {ts, TS()}], S5).          <4>
-S7 = ds:add({os:timestamp(), make_ref(), self()},      <5>
-            [{key, 3}, {ts, TS()}],
+S4 = ds:new().                                               <1>
+S5 = ds:add(an_atom, [{key, 1}, {ts, os:timestamp()}], S4).  <2>
+S6 = ds:add(123, [{key, 2}, {ts, os:timestamp()}], S5).      <3>
+S7 = ds:add({os:timestamp(), make_ref(), self()},            <4>
+            [{key, 3}, {ts, os:timestamp()}],
             S6).
-ds:gui(S7).                                            <6>
+ds:gui(S7).                                                  <5>
 ----
-<1> Define a fun to supply us with timestamps.
-<2> Create a new, empty spec.
-<3> Add an atom with key 1 and the current timestamp.
-<4> Add an integer with key 2 and the current timestamp.
-<5> Add a complex term with key 3 and the current timestamp.
-<6> Open a GUI on the result.
+<1> Create a new, empty spec.
+<2> Add an atom with key 1 and the current timestamp.
+<3> Add an integer with key 2 and the current timestamp.
+<4> Add a complex term with key 3 and the current timestamp.
+<5> Open a GUI on the result.
 
-.Note on timestamps
-[WARNING]
---
-Currently dumpsterl only supports timestamps in gregorian seconds, as
-shown in the above example. If you have timestamps in another format,
-please make sure to convert them to gregorian seconds. This is always
-possible via using a fun() as the `ts` attribute spec. Other timestamp
-formats will not cause problems in the probe, but will have undefined
-consequences in the GUI.
+.Timestamp format support
+[#timestamp-formats]
+****
 
-In a future version, dumpsterl will support arbitrary timestamp
-formats and will be able to decode anything via a (possibly
-user-supplied) decoder function.
---
+Dumpsterl recognizes a number of different timestamp formats supplied
+to the `ts` attribute. These are automatically converted to the same
+internal timestamp format used to graph and print them in the GUI
+report. Note that the probe stores the timestamps as is; conversion is
+deferred to the GUI. It is thus possible to add support for a new
+format and decode timestamps from an already existing dump without the
+need to re-run the probe.
+
+The currently supported formats are:
+
+- Gregorian seconds: the number of seconds since the start of year 0,
+  according to the rules of the Gregorian Calendar.
+
+- Gregorian milliseconds: the number of milliseconds since the start
+  of year 0. Note that the internal timestamp format of dumpsterl has
+  a precision of one second, so this will simply be truncated.
+
+- UNIX timestamp: the number of seconds since the UNIX epoch, the
+  start of the year 1970.
+
+- 3-tuples in the format returned by `erlang:now()` and
+  `os:timestamp()`.
+
+- Date as a `{Year, Month, Day}` tuple.
+
+- Datetime as `{{Year, Month, Day}, {Hour,  Minutes, Seconds}}`.
+
+If your timestamps are in a different format, please make sure to
+convert them to any of the supported ones listed above. When using the
+Probe API, this is possible via using a `fun()` as the `ts` attribute
+spec.
+
+Timestamp attributes in unsupported formats will not cause problems in
+the probe, and will be discarded by the GUI.
+
+****
 
 Two specs can be joined with the function
 link:../ds.html#join-2[`ds:join/2`]. Building on the results of the
@@ -1120,7 +1135,7 @@ there exist non-negative integers that do not fit into its only
 subtype `char()`.
 
 
-=== The spec tree
+=== The spec [[spec]]
 
 All the information collected by dumpsterl is represented by a data
 structure called the *spec*. This is what the probe and the API
@@ -1130,7 +1145,8 @@ The spec is a tree structure that mirrors the type hierarchy. The tree
 is formed by nodes that are 3-tuples: +
 `{Class, Data, Children}`. Each tree node is decorated with meta-data
 stored in the `Data` field. As the probe goes through the terms, each
-one is added to the spec, creating new child nodes as needed.
+one is added to the spec, creating new child nodes and updating
+existing ones as needed.
 
 The below figure shows a graphical representation of the spec tree for
 the type defined in Erlang type syntax as: +

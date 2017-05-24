@@ -105,18 +105,18 @@ range_graph(true, Attrs, Pts, Samples, ReportCfg) ->
     Sort = config_lookup(samples, sort, ReportCfg),
     Data1 = frame_data(Data0, Sort, fun(T) -> T end),
 
-    %% Convert the data to {Value, Count, MinTS, MaxTS} if needed
-    %% and filter out any rows without timestamps
-    Data =
-        case Attrs of
-            [key,ts] ->
-                [{V, C, MinTS, MaxTS}
-                 || {V, C, MinTS,_MinKey, MaxTS,_MaxKey} <- Data1,
-                    MinTS /= undefined, MaxTS /= undefined];
-            [ts] ->
-                [Row || {_V,_C, MinTS, MaxTS} = Row <- Data1,
-                        MinTS /= undefined, MaxTS /= undefined]
-        end,
+    %% Convert the data to {Value, Count, MinTS, MaxTS} as needed
+    Data2 = case Attrs of
+                [key,ts] ->
+                    [{V, C, MinTS, MaxTS}
+                     || {V, C, {ts,MinTS},_MinKey, {ts,MaxTS},_MaxKey} <- Data1];
+                [ts] ->
+                    [{V, C, MinTS, MaxTS}
+                     || {V, C, {ts,MinTS}, {ts,MaxTS}} <- Data1]
+            end,
+    %% Filter out all rows with any of the two timestamps missing
+    Data = [Row || {_V, _C, MinTS, MaxTS} = Row <- Data2,
+                   MinTS /= undefined, MaxTS /= undefined],
     do_range_graph(Data, ReportCfg).
 
 do_range_graph([],_ReportCfg) -> [];
@@ -136,37 +136,48 @@ value_row({Value, PVAttrs}, []) ->
 value_row({Value, PVAttrs}, [key]) ->
     Count = ds_pvattrs:get_count(PVAttrs),
     {{_MinTS, MinKey}, {_MaxTS, MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
-    {Value, Count, MinKey, MaxKey};
+    {Value, Count, {key, MinKey}, {key, MaxKey}};
 value_row({Value, PVAttrs}, [ts]) ->
     Count = ds_pvattrs:get_count(PVAttrs),
     {{MinTS,_MinKey}, {MaxTS,_MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
-    {Value, Count, MinTS, MaxTS};
+    {Value, Count,
+     {ts, ds_utils:decode_timestamp(MinTS)},
+     {ts, ds_utils:decode_timestamp(MaxTS)}};
 value_row({Value, PVAttrs}, [key,ts]) ->
     Count = ds_pvattrs:get_count(PVAttrs),
     {{MinTS, MinKey}, {MaxTS, MaxKey}} = ds_pvattrs:get_timespan(PVAttrs),
-    {Value, Count, MinTS, MinKey, MaxTS, MaxKey}.
+    {Value, Count,
+     {ts, ds_utils:decode_timestamp(MinTS)}, {key, MinKey},
+     {ts, ds_utils:decode_timestamp(MaxTS)}, {key, MaxKey}}.
 
 stats_display_f({Value, Count}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]}};
-stats_display_f({Value, Count, MinV, MaxV}) ->
+stats_display_f({Value, Count, TypMinV, TypMaxV}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]},
-     {td, [{align, right}], [blank_if_missing(MinV)]},
-     {td, [{align, right}], [blank_if_equal(MaxV, MinV)]}};
-stats_display_f({Value, Count, MinTS, MinKey, MaxTS, MaxKey}) ->
+     {td, align_f(TypMinV), [blank_if_missing(TypMinV)]},
+     {td, align_f(TypMaxV), [blank_if_equal(TypMaxV, TypMinV)]}};
+stats_display_f({Value, Count, TypMinTS, TypMinKey, TypMaxTS, TypMaxKey}) ->
     {{term, Value},
      {td, [{align, right}], [{str, ds_utils:integer_to_sigfig(Count)}]},
-     {td, [{align, right}], [blank_if_missing(MinTS)]},
-     {td, [{align, right}], [blank_if_missing(MinKey)]},
-     {td, [{align, right}], [blank_if_equal(MaxTS, MinTS)]},
-     {td, [{align, right}], [blank_if_equal(MaxKey, MinKey)]}}.
+     {td, [],               [blank_if_missing(TypMinTS)]},
+     {td, [{align, right}], [blank_if_missing(TypMinKey)]},
+     {td, [],               [blank_if_equal(TypMaxTS, TypMinTS)]},
+     {td, [{align, right}], [blank_if_equal(TypMaxKey, TypMinKey)]}}.
 
-blank_if_missing(undefined) -> {raw, ""};
-blank_if_missing(V)         -> {term, V}.
+blank_if_missing({_Type, undefined}) -> {raw, ""};
+blank_if_missing({Type, V})          -> display_f({Type, V}).
 
-blank_if_equal(V, V)    -> {raw, ""};
-blank_if_equal(V,_Vref) -> blank_if_missing(V).
+blank_if_equal(TV, TV)    -> {raw, ""};
+blank_if_equal(TV,_TVref) -> blank_if_missing(TV).
+
+display_f({key, Key}) -> {term, Key};
+display_f({ts, TS})   -> {str, ds_utils:convert_timestamp(TS, string)}.
+
+align_f({key,_K}) -> [{align, right}];
+align_f({ts,_TS}) -> [].
+
 
 stats_headers([]) ->
     [[{"Value", [{align, left}]},
@@ -228,6 +239,7 @@ tk_attrs_present(PVAttrs, Rest, Acc0) ->
     end.
 
 report_ext(_Class, [],_ReportCfg) -> [];
+report_ext({record,_},_Ext,_ReportCfg) -> []; % record attributes
 report_ext(atom,_Ext,_ReportCfg) -> []; % used as Samples in the common report
 report_ext(boolean, Ext, ReportCfg) -> report_ext(atom, Ext, ReportCfg);
 report_ext(<<>>, Ext, ReportCfg) -> report_ext(bitstring, Ext, ReportCfg);

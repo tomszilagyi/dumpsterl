@@ -6,6 +6,8 @@
 
 -export([ common_prefix/2
         , cut_cwd/1
+        , convert_timestamp/2
+        , decode_timestamp/1
         , hash/1
         , index/2
         , integer_to_sigfig/1
@@ -53,6 +55,90 @@ do_cut_cwd(AbsFilename) ->
 
 do_cut_cwd(AbsComps, []) -> filename:join(AbsComps);
 do_cut_cwd([Comp|RestAbs], [Comp|RestCwd]) -> do_cut_cwd(RestAbs, RestCwd).
+
+
+%% UNIX epoch in gregorian seconds
+%% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
+-define(EPOCH, 62167219200).
+
+%% Arbitrarily chosen end timestamp to limit integer formats
+%% calendar:datetime_to_gregorian_seconds({{2100,1,1},{0,0,0}})
+-define(GDATE_END, 66269664000).
+
+%% Decode a timestamp from any of the plausible data formats into the
+%% standard internal format (gregorian seconds).
+%% Return 'undefined' if the supplied data is not recognized as a timestamp.
+decode_timestamp(GSecs)
+  when is_integer(GSecs), GSecs >= ?EPOCH, GSecs =< ?GDATE_END ->
+    GSecs;
+decode_timestamp(GMilliSecs)
+  when is_integer(GMilliSecs),
+       GMilliSecs >= 1000 * ?EPOCH,
+       GMilliSecs =< 1000 * ?GDATE_END ->
+    GMilliSecs div 1000;
+decode_timestamp(UnixTimestamp)
+  when is_integer(UnixTimestamp),
+       UnixTimestamp >= 0, UnixTimestamp < ?GDATE_END - ?EPOCH ->
+    UnixTimestamp + ?EPOCH;
+decode_timestamp({Year, Month, Day} = Date)
+  when Year >= 1900, Year < 2100,
+       Month >= 1, Month =< 12,
+       Day >= 1, Day =< 31 ->
+    calendar:datetime_to_gregorian_seconds({Date, {0,0,0}});
+decode_timestamp({{Year, Month, Day}, {Hour, Minute, Second}} = DateTime)
+  when Year >= 1900, Year < 2100,
+       Month >= 1, Month =< 12,
+       Day >= 1, Day =< 31,
+       Hour >= 0, Hour < 24,
+       Minute >= 0, Minute < 60,
+       Second >= 0, Second < 60 ->
+    calendar:datetime_to_gregorian_seconds(DateTime);
+decode_timestamp({MegaSecs, Secs, MicroSecs} = Now)
+  when MegaSecs >= 0, MegaSecs =< (?GDATE_END - ?EPOCH) div 1000000,
+       Secs >= 0, Secs < 1000000,
+       MicroSecs >= 0, MicroSecs < 1000000 ->
+    DateTime = calendar:now_to_datetime(Now),
+    calendar:datetime_to_gregorian_seconds(DateTime);
+decode_timestamp(_UnknownFormat) ->
+    undefined.
+
+
+%% Convert the internal timestamp format to one of the standard
+%% external formats:
+%%      gsecs: gregorian seconds
+%%     gmsecs: gregorian milliseconds
+%%       unix: unix timestamp
+%%       date: {Year, Month, Day}
+%%   datetime: {{Year, Month, Day}, {Hour, Minute, Seconds}}
+%%        now: Erlang now() / os:timestamp() compatible
+%%     string: YYYY-MM-DD  or  YYYY-MM-DD HH:MM:SS
+%% string_pad: like string, but padded to match the widest variant
+convert_timestamp(undefined, _) -> undefined;
+convert_timestamp(GSecs, gsecs) -> GSecs;
+convert_timestamp(GSecs, gmsecs) -> 1000 * GSecs;
+convert_timestamp(GSecs, unix) -> max(0, GSecs - ?EPOCH);
+convert_timestamp(GSecs, date) ->
+    {Date,_Time} = calendar:gregorian_seconds_to_datetime(GSecs),
+    Date;
+convert_timestamp(GSecs, datetime) ->
+    calendar:gregorian_seconds_to_datetime(GSecs);
+convert_timestamp(GSecs, now) ->
+    UnixTS = GSecs - ?EPOCH,
+    MegaSecs = UnixTS div 1000000,
+    Secs = UnixTS rem 1000000,
+    {MegaSecs, Secs, 0};
+convert_timestamp(GSecs, string) ->
+    case calendar:gregorian_seconds_to_datetime(GSecs) of
+        {{Y,Mo,D}, {0,0,0}} ->
+            io_lib:format("~4..0B-~2..0B-~2..0B", [Y,Mo,D]);
+        {{Y,Mo,D}, {H,M,0}} ->
+            io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B",
+                          [Y,Mo,D, H,M]);
+        {{Y,Mo,D}, {H,M,S}} ->
+            io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
+                          [Y,Mo,D, H,M,S])
+    end.
+
 
 %% Hash function used by the statistics modules.
 %% Note: the hash value must be truncated to 32 bits.
@@ -127,6 +213,28 @@ cut_cwd_test() ->
     RelNoexist = filename:join([this, does, 'not', exist]),
     AbsNoexist = filename:join(Cwd, RelNoexist),
     ?assertEqual(AbsNoexist, cut_cwd(AbsNoexist)).
+
+convert_timestamp_test() ->
+    F = fun lists:flatten/1,
+    ?assertEqual(62962922096,              convert_timestamp(62962922096, gsecs)),
+    ?assertEqual(62962922096000,           convert_timestamp(62962922096, gmsecs)),
+    ?assertEqual(795702896,                convert_timestamp(62962922096, unix)),
+    ?assertEqual({795, 702896, 0},         convert_timestamp(62962922096, now)),
+    ?assertEqual({{1995,3,20},{12,34,56}}, convert_timestamp(62962922096, datetime)),
+    ?assertEqual({1995,3,20},              convert_timestamp(62962922096, date)),
+    ?assertEqual("1995-03-20 12:34:56",  F(convert_timestamp(62962922096, string))),
+    ?assertEqual("1995-03-20 12:34",     F(convert_timestamp(62962922040, string))),
+    ?assertEqual("1995-03-20",           F(convert_timestamp(62962876800, string))),
+    ?assertEqual(undefined,                convert_timestamp(undefined, gsecs)).
+
+decode_timestamp_test() ->
+    ?assertEqual(62962922096, decode_timestamp(62962922096)),
+    ?assertEqual(62962922096, decode_timestamp(62962922096000)),
+    ?assertEqual(62962922096, decode_timestamp(795702896)),
+    ?assertEqual(62962922096, decode_timestamp({795, 702896, 123456})),
+    ?assertEqual(62962922096, decode_timestamp({{1995,3,20},{12,34,56}})),
+    ?assertEqual(62962876800, decode_timestamp({1995,3,20})),
+    ?assertEqual(undefined,   decode_timestamp({what, is, this})).
 
 index_test() ->
     ?assertEqual(error, index(aaa, [])),

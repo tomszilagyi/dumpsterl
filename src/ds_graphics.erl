@@ -18,10 +18,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% Gnuplot takes timestamps in Unix format, starting from the Epoch.
-%% Value: calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
--define(EPOCH, 62167219200).
-
 -define(DEFAULT_XSIZE, 750).
 
 %% Attrs is a list of attribute tuples of {Key, Value}.
@@ -74,8 +70,8 @@ auto_xtics(TsMin, TsMax, Attrs) ->
 xtics_choose_range(SecondsPerTic) ->
     xtics_choose_range(SecondsPerTic, xtics_range_table()).
 
-xtics_choose_range(SecondsPerTic, [{Limit,_Format}=RangeSpec|_Rest])
-  when SecondsPerTic >= Limit -> RangeSpec;
+xtics_choose_range(SecondsPerTic, [{Limit, Format}|_Rest])
+  when SecondsPerTic >= Limit -> {max(10, Limit), Format};
 xtics_choose_range(SecondsPerTic, [_RangeSpec|Rest]) ->
     xtics_choose_range(SecondsPerTic, Rest).
 
@@ -111,12 +107,14 @@ xtics_range_table() ->
     , {  180,            "%d. %H:%M"}   %  3 minutes
     , {  120,            "%d. %H:%M"}   %  2 minutes
     , {   60,            "%d. %H:%M"}   %  1 minute
-    , {    0,            "%M:%S"}       %  catch-all
+    , {   30,            "%H:%M:%S"}    % 30 seconds
+    , {   10,            "%H:%M:%S"}    % 10 seconds
+    , {    0,            "%H:%M:%S"}    %  catch-all
     ].
 
 %% Convert standard timestamp (gregorian seconds) to the format
 %% expected by Gnuplot (seconds since Unix epoch).
-conv_ts(Ts) -> max(0, Ts - ?EPOCH).
+conv_ts(Ts) -> ds_utils:convert_timestamp(Ts, unix).
 
 %% Graphs are generated via Gnuplot.
 %%
