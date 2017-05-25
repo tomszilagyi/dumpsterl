@@ -198,9 +198,9 @@ In the shell, test abstract forms of types with this one-liner
   f(Form), {ok, Form} = erl_parse:parse_form(Toks), Form.
 
 *** TODO Type conversion small enhancements
-- records without attributes: treat them as tuples
-- atoms with only a few values: generate a union of concrete values
-- maps: create a spec for the key and value types
+- [X] records without attributes: treat them as tuples
+- [ ] atoms with only a few values: generate a union of concrete values
+- [ ] maps: create a spec for the key and value types
     NB. value spec is a join of all children; joining must be done
     before the compaction on load!
 *** TODO Type reductions

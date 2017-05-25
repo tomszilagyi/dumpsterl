@@ -67,6 +67,7 @@ spec_disk_log_set_test() ->
     ok = file:delete(LogFile).
 
 spec_f(Type, Tid) ->
+    ds_records:reinit(),
     fun(FieldSpec) -> ?M:spec(Type, Tid, FieldSpec) end.
 
 test_spec(TestFun, NRecs) ->

@@ -268,7 +268,12 @@ improper_list(T, Acc) -> {'$improper_list', Acc, T}.
 dyn_record(V) when is_tuple(V) andalso size(V) > 1 ->
     RecName = element(1, V),
     case is_atom(RecName) of
-        true  -> {RecName, size(V)};
+        true  ->
+            RecId = {RecName, size(V)},
+            case ds_records:lookup(RecId) of
+                false -> false;
+                _RAs  -> RecId
+            end;
         false -> false
     end;
 dyn_record(_V) -> false.
@@ -391,6 +396,11 @@ subtype_test() ->
                  hierarchy([a,b|c])),
     ?assertEqual([tuple, {tuple,3}, {'$fields', [123,456,789]}],
                  hierarchy({123,456,789})),
+
+    %% records are classified as such only if their attributes are known
+    ?assertEqual([tuple, {tuple,3}, {'$fields', [abc,123,"sss"]}],
+                 hierarchy({abc,123,"sss"})),
+    ds_records:put_attrs([{{abc,3}, [{[f1, f2], dummy_source_list}]}]),
     ?assertEqual([tuple, {record, {abc,3}}, {'$fields', [123,"sss"]}],
                  hierarchy({abc,123,"sss"})).
 

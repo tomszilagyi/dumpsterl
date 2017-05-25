@@ -14,7 +14,7 @@
 %% call by ds_shell; for spawn_monitor and spawn_link:
 -export([ start/6
         , init/6
-        , procs_slave/4
+        , procs_slave/5
         ]).
 
 %%-define(DEBUG, true).
@@ -101,24 +101,26 @@ procs_init(#state{current_pos = Pos, limit = Limit, args = ProbeArgs} = State) -
     MasterPid = self(),
     ?debug("init master ~p", [MasterPid]),
     Opts = ds_opts:getopts(),
+    RecAttrs = ds_records:get_attrs(),
     %% inhibit progress output in slaves:
     SlaveState = State#state{progress = ds_progress:init(ProbeArgs, false)},
-    NextPid = procs_spawn_slave(SlaveState, MasterPid, Opts, NProcs),
+    NextPid = procs_spawn_slave(SlaveState, MasterPid, Opts, RecAttrs, NProcs),
     MasterPid ! {proc, Pos, Limit, 0}, % Trigger the processing
     procs_master_loop(State#state{master_pid = MasterPid, next_pid = NextPid,
                                   progress = ds_progress:init(ProbeArgs),
                                   n_procs = NProcs}).
 
 %% The NextPid of the last slave is MasterPid
-procs_spawn_slave(_State, MasterPid,_Opts, 1) -> MasterPid;
-procs_spawn_slave(State, MasterPid, Opts, N) ->
-    spawn_link(?MODULE, procs_slave, [State, MasterPid, Opts, N-1]).
+procs_spawn_slave(_State, MasterPid,_Opts,_RecAttrs, 1) -> MasterPid;
+procs_spawn_slave(State, MasterPid, Opts, RecAttrs, N) ->
+    spawn_link(?MODULE, procs_slave, [State, MasterPid, Opts, RecAttrs, N-1]).
 
 %% Entry point of slave process
-procs_slave(State, MasterPid, Opts, N) ->
+procs_slave(State, MasterPid, Opts, RecAttrs, N) ->
     ?debug("init slave ~p", [self()]),
     ds_opts:setopts_raw(Opts),
-    NextPid = procs_spawn_slave(State, MasterPid, Opts, N),
+    ds_records:put_attrs(RecAttrs),
+    NextPid = procs_spawn_slave(State, MasterPid, Opts, RecAttrs, N),
     procs_slave_loop(State#state{master_pid = MasterPid, next_pid = NextPid}).
 
 procs_master_loop(#state{status = idle, n_procs = 1, spec = Spec0, progress = Progress}) ->
