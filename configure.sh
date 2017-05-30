@@ -37,7 +37,7 @@ echo "-define(ERLANG_OTP_RELEASE, $ERLANG_OTP_RELEASE)." >> $CONFIG
 
 # See if the wx application is available in our Erlang/OTP
 WX_PRIVDIR=$(erl -noshell -eval 'erlang:display(code:priv_dir(wx)), halt().')
-REGEXP="/lib/erlang/lib/wx-.*/priv"
+REGEXP=".*/lib/wx-.*/priv"
 if [[ $WX_PRIVDIR =~ $REGEXP ]] ; then
     echo " - wxErlang present: yes"
     echo "-define(CONFIG_WXGUI, true)." >> $CONFIG
@@ -85,3 +85,13 @@ fi
 echo >> $CONFIG
 echo "-endif." >> $CONFIG
 echo "Configuration written to $CONFIG"
+
+
+## Create a one-liner for CI to run all the tests
+RUN_CI=.run_ci_tests
+if [ $ERLANG_OTP_RELEASE -le 16 ] ; then
+    echo "make eunit && make ct" > $RUN_CI
+else
+    echo "make eunit && make ct && make dialyze" > $RUN_CI
+fi
+chmod a+x $RUN_CI

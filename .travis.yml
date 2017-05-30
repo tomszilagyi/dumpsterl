@@ -1,0 +1,11 @@
+dist: trusty
+sudo: required
+language: erlang
+otp_release:
+  - 19.3
+  - 18.3
+  - 17.5
+  - R16B03
+install: sudo apt-get install gnuplot
+before_script: make
+script: ./.run_ci_tests

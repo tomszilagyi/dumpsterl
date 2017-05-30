@@ -1,5 +1,7 @@
 = dumpsterl
 
+image:https://travis-ci.org/tomszilagyi/dumpsterl.svg?branch=master["Build Status", link="https://travis-ci.org/tomszilagyi/dumpsterl"]
+
 The purpose of *dumpsterl* is to provide a powerful, extensible and
 user-friendly framework for data exploration in NoSQL environments.
 
